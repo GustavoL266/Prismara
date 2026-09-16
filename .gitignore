@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+coverage/
+test-results/
+playwright-report/
+.local/
+*.tmp
+*.bak
+.vscode/
+.idea/
