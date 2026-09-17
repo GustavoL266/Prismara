@@ -35,8 +35,12 @@ jobs:
         run: npm ci
       - name: Executar testes
         run: npm test
+      - name: Preparar Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Validar partida, interface e fábrica autônoma
+        run: npm run test:browser
       - name: Gerar site de produção
-        run: npm run build -- --base=/Sandustry/
+        run: npm run build -- --base=/Prismara/
       - name: Preparar GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/configure-pages@v5

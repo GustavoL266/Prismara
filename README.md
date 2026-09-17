@@ -1,176 +1,157 @@
 # Prismara
 
-Um jogo 2D de exploração e automação industrial com partículas, feito em TypeScript, Vite e Canvas 2D. Escave um deserto alienígena, aproveite a gravidade e transforme areia em Cristais Prismáticos. A produção de cerâmica alimenta a fábrica: pelotas que caem sobre uma prensa geram energia, e seus cacos voltam à cadeia.
+Jogo 2D de mineração e automação industrial em TypeScript, Vite e Canvas 2D. Escave depósitos consolidados, libere grãos físicos e molde a instalação com paredes, funis, comportas e esteiras. Misture areia com água finita, peneire a areia úmida e conduza o ouro até um coletor. O ouro financia pesquisa; cristais raros financiam melhorias especiais.
 
-Prismara possui ambientação, desenhos procedurais, interface e implementação originais. O nome histórico do repositório é `Sandustry`; a identidade apresentada ao jogador é **Prismara**. Não são utilizados sprites, sons, mapas ou código dos jogos que inspiraram o gênero.
+Código: [GustavoL266/Prismara](https://github.com/GustavoL266/Prismara). Arte em pixel, mapas por semente, tecnologias e efeitos sonoros procedurais próprios.
 
-Repositório oficial: [GustavoL266/Sandustry](https://github.com/GustavoL266/Sandustry).
+![Exploração subterrânea de Prismara](docs/images/04-exploracao-1280.png)
 
-Jogo no navegador: [Prismara](https://gustavol266.github.io/Sandustry/).
+Capturas nas duas resoluções, resultados da fábrica autônoma e medições estão em [Validação](docs/validation.md).
 
-## Executar localmente
+## Executar e verificar
 
-Instale Node.js 22 ou mais recente, com npm, e abra um terminal na raiz do projeto.
+Requer Node.js 22 ou superior e npm.
 
 ```sh
 npm ci
 npm run dev
-```
-
-Abra o endereço local indicado pelo Vite. O jogo roda no navegador, sem servidor de contas e sem serviços externos durante a partida. Use teclado e mouse em um navegador atual com Canvas 2D e armazenamento local habilitados.
-
-```sh
 npm test
 npm run build
-npm run preview
 npm run test:browser
+npm run benchmark
 ```
 
-- `npm ci`: instala as versões fixadas em `package-lock.json`.
-- `npm run dev`: inicia o desenvolvimento com atualização automática.
-- `npm test`: executa os testes da simulação e dos sistemas do jogo.
-- `npm run build`: verifica TypeScript e gera o site estático em `dist/`.
-- `npm run preview`: abre uma prévia local do build de produção.
-- `npm run test:browser`: testa controles, interface e a cadeia completa no navegador. Inicia o Vite se necessário. No Windows, usa o Chrome instalado; em outros ambientes, execute `npx playwright install chromium` antes. `CHROME_PATH` permite indicar outro executável Chromium.
-
-`node_modules/`, `dist/`, caches, arquivos de ambiente e logs não devem ser enviados ao Git.
-
-## Como jogar
-
-Escolha **Novo mundo** na tela inicial ou **Continuar** para restaurar a partida deste navegador. O guia acompanha a cadeia industrial, da primeira escavação à pesquisa de controle. Explore a superfície, as cavernas minerais e a ruína luminosa, mantendo espaço acima das máquinas para alimentar suas entradas.
-
-| Controle | Ação |
-| --- | --- |
-| A / D ou setas | Andar |
-| Espaço | Saltar / usar o propulsor |
-| Mouse | Mirar e inspecionar |
-| Botão esquerdo | Usar ferramenta ou construir |
-| Botão direito | Ação alternativa / remover máquina |
-| 1 | Escavar |
-| 2 | Coletar partículas para o inventário |
-| 3 | Despejar o material selecionado |
-| 4 | Construir |
-| Q / E | Alternar material ou máquina |
-| R | Girar a construção / mudar o sentido |
-| Roda do mouse | Aproximar ou afastar a câmera |
-| Botão central + arrastar | Mover a câmera |
-| F | Voltar a câmera ao explorador |
-| B | Catálogo de construção |
-| T | Pesquisa |
-| H | Guia |
-| I | Mochila / seleção de material |
-| M | Mapa |
-| Esc | Pausa e opções |
-
-A prévia verde indica uma posição permitida; a vermelha indica obstrução. Observe as entradas, saídas e setas das máquinas antes de posicioná-las. O inspetor mostra material, estado, densidade, temperatura e informações de operação. Uma máquina sem entrada, sem energia, bloqueada ou desligada informa seu estado. Clique numa máquina para selecioná-la; o inspetor também permite alimentar sua entrada a partir da mochila. Essa alimentação despeja os grãos no mundo, sujeitos à física e a obstruções.
+O navegador não precisa de servidor de contas. O teste de navegador inicia o Vite se necessário; no Windows utiliza Chrome instalado. Em outros sistemas, instale Chromium com `npx playwright install chromium`. `CHROME_PATH` e `PRISMARA_TEST_URL` permitem configurar o navegador e o servidor. A suíte leva aproximadamente quatro minutos, incluindo **três minutos reais**, sem intervenção, de uma instalação autônoma.
 
 ## Primeira fábrica
 
-1. Escave a areia próxima da água e colete material para construir. Despeje areia sobre água para obter **Polpa Mineral**; a mistura precisa acontecer entre partículas no mundo.
-2. Coloque um **Tambor Separador** abaixo da polpa. Reserve espaço na saída lateral de argila e na saída inferior de quartzo.
-3. Após produzir 18 argilas e 3 quartzos, libere Cerâmica no painel **Pesquisa [T]**. Alimente um **Forno Cerâmico** com argila para obter **Pelotas Cerâmicas**. Sem energia, seu aquecedor solar trabalha mais devagar e permite reiniciar a produção.
-4. Use a gravidade ou um **Elevador Magnético** para lançar as pelotas sobre uma **Prensa Piezoelétrica**. A queda precisa atingir pelo menos 18 células; impactos fracos podem entupir a entrada. A ação **Lançar** do inspetor despeja pelotas da mochila acima da prensa.
-5. Use energia no **Cadinho de Vidro** para fundir quartzo. O vidro sai como líquido físico e permanece quente.
-6. Alimente o **Gerador de Névoa** com água e direcione a névoa fria ao vidro. O contato produz cristais ou fragmentos.
-7. Conduza os cristais até um **Cofre Prismático**. Só o conteúdo dos cofres conta como moeda de pesquisa; carregar cristais no inventário não basta.
-8. Compre pesquisas e recicle cacos e fragmentos no **Triturador**. Expanda usando esteiras, elevadores, filtros, tubos e sensores.
-9. Explore a leste até a ruína. Após liberar Controle de Fluxo, leve 24 cristais armazenados no cofre e ative o farol perto da ruína para concluir a expedição. A fábrica pode continuar funcionando depois.
+1. O explorador começa com 48 células de areia para construção. A areia do terreno permanece consolidada até ser escavada com **1**; ela fica no mundo. **2** aspira os grãos liberados.
+2. Há água num bolsão selado a cerca de 64 células à direita. Despeje areia nessa água com **3**: cada contato consome uma água e cria uma areia úmida. Selecione areia úmida no inventário e use **Shift + 2 + mouse** para aspirar apenas esse material.
+3. Construa uma **Peneira Vibratória** num espaço escavado, um **Coletor de Minérios** abaixo e uma esteira na lateral. Deixe espaço entre a grelha e o coletor. Despeje areia úmida sobre a grelha.
+4. Resíduo permanece sobre a peneira e avança lentamente para a lateral; ouro cai pela saída inferior. O coletor remove cada grão valioso e credita uma moeda uma única vez.
+5. Por **6 ouro**, pesquise Hidráulica de Bolsões. Coloque a bomba em contato com água, conecte tubos pelas bordas e instale uma válvula sobre a alimentação. Regule a vazão no inspetor para economizar água.
+6. Para operação contínua, escave uma câmara **abaixo** de um depósito arenoso. Uma esteira sob o depósito conduz os grãos à queda sobre a peneira, onde chega água da válvula. Paredes e funis evitam derramamento. Coloque várias peneiras em degraus descendentes e leve as saídas inferiores aos coletores.
+7. Mais tarde, a Sonda Escavadora libera uma célula por operação no alcance de 28 células abaixo do motor; ela trabalha a partir da face inferior do depósito. O Transportador de Arraste e sensores complementam a automação.
 
-Construções consomem areia e algumas operações consomem energia. Consulte os custos no catálogo e nas definições do jogo. A energia inicial permite iniciar a cadeia, mas a prensa é a fonte renovável da fábrica.
+Alimentação pelo inspetor é uma conveniência limitada a **16 unidades**, exige proximidade do explorador e usa células físicas livres. Uma fábrica alimentada por gravidade, correias e hidráulica continua produzindo sem repetir essa ação.
 
-### Receitas e conservação
+## Controles
 
-| Entrada / condição | Resultado |
+A interface e o despachante de teclado usam o mesmo catálogo em [src/game/input.ts](src/game/input.ts). A tabela abaixo é gerada com `npm run docs:controls`.
+
+<!-- controls:start -->
+| Controle | Ação |
 | --- | --- |
-| 1 areia + 1 água em contato | 2 polpas minerais |
-| Polpa no tambor | Argila mineral e aproximadamente 22% de chance de quartzo adicional |
-| Argila no forno | Pelota cerâmica |
-| Pelota com impacto suficiente na prensa | Energia + caco cerâmico |
-| Quartzo no cadinho com energia | Vidro fundido |
-| Vidro fundido + névoa fria | Aproximadamente 65% de cristal; 35% de fragmento vítreo |
-| Caco no triturador | Areia reciclada |
-| Fragmento no triturador | Areia ou quartzo |
-| Água aquecida | Vapor |
-| Vapor resfriado | Água |
-| Água + energia no gerador | Névoa fria |
+| A / D / ← → | Andar |
+| Espaço / W / ↑ | Propulsor |
+| 1 | Escavar e liberar grãos |
+| 2 | Aspirar partículas |
+| 3 | Despejar material |
+| 4 | Construir por arraste |
+| 5 | Selecionar conjunto em área |
+| 6 | Lança térmica (pesquisa) |
+| B | Catálogo de construção |
+| T | Pesquisa |
+| U | Melhorias |
+| I | Inventário |
+| H | Ajuda |
+| M | Mapa ampliado |
+| N | Recolher minimapa |
+| R | Girar ou inverter peça |
+| Q | Material ou peça anterior |
+| E | Próximo material ou peça |
+| C | Copiar conjunto e configurações |
+| V | Construir conjunto copiado |
+| Delete | Recolher seleção |
+| F | Câmera segue explorador |
+| Esc | Pausa / fechar painel |
+| Mouse esquerdo | Usar ferramenta / construir |
+| Mouse direito | Recolher peça |
+| Shift + mouse direito | Prévia e remoção em área |
+| Shift + aspirar | Aspirar apenas o material selecionado |
+| Roda do mouse | Zoom nítido |
+| Mouse central + arraste | Mover câmera |
+<!-- controls:end -->
 
-As probabilidades se aplicam a cada processamento; lotes pequenos variam. Saídas obstruídas interrompem o processamento. Dê espaço às partículas e recircule os materiais secundários.
+## Construção e interface
 
-O rendimento de 65% aplica-se ao vidro que **toca a névoa**. Vidro que esfria lentamente sem esse contato vira fragmento. No nível 3, o catálogo oferece um módulo térmico por 22 grãos de areia: cadinho, gerador e bandeja, com as saídas alinhadas. Alimente o gerador com água enquanto o cadinho recebe quartzo. Recicle fragmentos para tentar novamente.
+Recursos no canto superior esquerdo, atalhos compactos, objetivo recolhível no canto superior direito, slots numerados na base e inspetor aberto somente para a máquina selecionada. **N** recolhe o minimapa; **M** alterna o mapa ampliado. A pausa oferece escala de interface de 85% a 140%.
 
-O Pó de Lúmen da flora é um material flutuante adicional: cai devagar, deriva e reage ao calor intenso liberando vapor. Cores, padrões de textura, estados de movimento, ícones e rótulos ajudam a distinguir os materiais.
+O catálogo mostra categoria, ícone, custo, entrada, saída e política de orientação. Esteiras, peneiras, fornos, prensas e lançadores **invertem o sentido**. Paredes, plataformas, comportas e funis têm **rotação geométrica**, com troca de largura/altura. Bombas, tubos, coletores e sensores têm orientação fixa; névoa e válvulas giram a saída. A prévia, a colisão, o desenho e a operação usam a mesma geometria.
 
-### Máquinas e progressão
+Arraste para construir continuamente. **5 + arraste** seleciona conjuntos; **C** copia as configurações; **V** constrói uma cópia pagando o custo. **Shift + botão direito + arraste** mostra uma prévia da remoção e aplica ao soltar. Recolher devolve o custo sem duplicar os grãos. Tubos só podem ser removidos quando existe espaço para devolver todo seu conteúdo ao mundo.
 
-- **Fundamentos:** Esteira de Placas, Tambor Separador e Cofre Prismático.
-- **Cerâmica e Energia:** Forno Cerâmico, Elevador Magnético, Prensa Piezoelétrica e Triturador.
-- **Vidro e Resfriamento:** Cadinho de Vidro, Gerador de Névoa, Bomba, Tubo e Válvula de Saída.
-- **Controle:** Portão de Densidade, Sensor de Presença, fios e esteiras rápidas.
+## Receitas
 
-Cerâmica exige 18 argilas e 3 quartzos produzidos; Vidro exige 3 impactos válidos. Essas duas pesquisas não gastam cristais. Controle custa 12 cristais presentes nos cofres. O farol consome outros 24 cristais.
-
-A esteira atua na camada que toca sua superfície. O elevador transporta sólidos; líquidos e gases seguem sua própria física. O portão filtra por configuração. Bombas e válvulas transferem água ou polpa entre o mundo e redes de tubos conectadas; redes separadas mantêm conteúdos separados. Tubos comuns não recebem vidro fundido. Sensores comandam uma máquina compatível; os fios são a representação da ligação lógica, sem peças de fio individuais para construir. A energia usa uma bateria compartilhada pela fábrica, com 160 E iniciais e capacidade de 1.200 E.
-
-## Salvamento e áudio
-
-O salvamento usa `localStorage`, na chave `prismara.world.v1`, e um formato versionado. Ele preserva mundo, partículas, máquinas, inventário, energia, pesquisa, objetivos, explorador e preferências. O jogo salva a cada 25 segundos de simulação, ao ocultar ou sair da página, e oferece controles de partida na pausa. Filas temporárias de alimentação são interrompidas ao restaurar; grãos ainda não despejados permanecem na mochila. O armazenamento pertence ao navegador e ao endereço usado: a versão local e a versão hospedada possuem partidas separadas. Limpar os dados do site remove o salvamento.
-
-Os efeitos são sintetizados com Web Audio, sem arquivos de terceiros. O navegador pode exigir uma interação antes de liberar áudio. O volume pode ser ajustado, e o jogo permanece funcional com áudio desativado.
-
-## Arquitetura e balanceamento
-
-A simulação é uma grade de 640 × 320 células compactas em TypedArrays, com materiais identificados por índices e chunks de 16 × 16 células. Não existe um objeto JavaScript por grão. A física usa passo fixo de 30 Hz; a apresentação usa `requestAnimationFrame`. A ordem de atualização varia para reduzir viés direcional. Movimento, densidade, calor e reações pertencem à simulação; a renderização não decide os resultados de fabricação.
-
-| Arquivo / diretório | Responsabilidade |
+| Entrada e condição | Saída física |
 | --- | --- |
-| [`src/sim/materials.ts`](src/sim/materials.ts) | Identificadores, propriedades, cores e usos dos materiais |
-| [`src/sim/reactions.ts`](src/sim/reactions.ts) | Reações de contato, temperaturas e probabilidades |
-| [`src/sim/world.ts`](src/sim/world.ts) | Grade, chunks, movimento, densidade e calor |
-| [`src/sim/terrain.ts`](src/sim/terrain.ts) | Geração das três regiões a partir da semente |
-| [`src/sim/machines.ts`](src/sim/machines.ts) | Catálogo, custos, receitas, processamento e cofres |
-| [`src/sim/pipes.ts`](src/sim/pipes.ts) | Conectividade e conteúdo das redes de tubos |
-| [`src/sim/energy.ts`](src/sim/energy.ts) | Bateria compartilhada e custos de operação |
-| [`src/sim/signals.ts`](src/sim/signals.ts) | Detecção e controle por sensores |
-| [`src/game/progression.ts`](src/game/progression.ts) | Objetivos, dicas e apresentação das pesquisas |
-| [`src/game/game.ts`](src/game/game.ts) | Partida, inventário, ferramentas e regras de desbloqueio |
-| [`src/game/player.ts`](src/game/player.ts), [`src/game/input.ts`](src/game/input.ts) | Explorador, colisão e controles |
-| [`src/render/renderer.ts`](src/render/renderer.ts) | Mundo, personagem, efeitos e iluminação |
-| [`src/ui/`](src/ui/) | Painéis, ícones e estilos da interface |
-| [`src/game/save.ts`](src/game/save.ts), [`src/game/audio.ts`](src/game/audio.ts) | Persistência validada e áudio sintetizado |
-| [`tests/`](tests/) | Testes físicos e de integração |
+| 1 areia + 1 água em contato | 1 areia úmida; água consumida |
+| 1 areia úmida na peneira | 1 resíduo sobre a grelha + 25% de chance de 1 ouro abaixo |
+| Ouro ou cristal no coletor | Uma moeda do respectivo tipo; grão removido |
+| Resíduo ou polpa antiga no tambor | 1 argila lateral + 22% de chance de quartzo inferior |
+| Argila no forno | Pelota cerâmica lateral |
+| Pelota com queda ≥ 18 células sobre a prensa | 32 E + caco lateral |
+| Quartzo + 3 E no cadinho | Vidro fundido inferior, a 1100 °C |
+| Vidro fundido + névoa fria | 65% cristal raro / 35% fragmento; névoa vira água |
+| Água + 0,35 E no gerador | Névoa fria na direção configurada |
+| Resíduo aquecido a 420 °C | Resíduo calcinado |
+| Resíduo + 0,6 E na câmara | Resíduo calcinado lateral, a 480 °C |
+| Calcinado + 0,2 E no triturador | 70% argila / 30% quartzo inferior |
+| Caco ou fragmento + 0,2 E no triturador | Areia; fragmentos têm 18% de chance de quartzo |
+| Água > 100 °C | Vapor ascendente |
+| Vapor frio ou contato com superfície fria | Água |
+| Gelo aquecido acima de 0 °C | Água |
 
-Para modificar um material, altere sua definição em `src/sim/materials.ts`, mantendo seu identificador estável para preservar a compatibilidade dos saves. Ajuste nome, paleta, estado, densidade, temperatura, condutividade, resistência e regras de movimento. Para alterar a cadeia produtiva, modifique `REACTIONS` em `src/sim/reactions.ts` ou `RECIPES` em `src/sim/machines.ts` e rode os testes. Custos de construção ficam em `MACHINE_DEFS`; custos elétricos, em `ENERGY`. Ao mudar requisitos de pesquisa, mantenha `src/game/progression.ts` e as validações em `src/game/game.ts` consistentes. Mudanças incompatíveis nos dados persistidos exigem atualizar a versão do salvamento ou fornecer uma migração.
+**Rendimento abstrato:** os bônus de ouro e quartzo representam concentração mineral por unidade processada e podem criar um subproduto adicional. Não há conservação estrita do número de pixels nessas receitas. Água é finita e consumida no umedecimento. Probabilidades variam em lotes pequenos; parâmetros ficam em [reactions.ts](src/sim/reactions.ts).
 
-## Verificação
+Máquinas reservam capacidade de saída antes de consumir entrada e energia. Material derramado permanece no mundo. Esteiras movem a camada em contato; pilhas e saídas cheias congestionam a instalação. Lançadores percorrem as células intermediárias e colidem com obstáculos. Grelhas bloqueiam o explorador e os rejeitos, mas permitem os materiais definidos por sua política de passagem.
 
-Os testes cobrem queda granular, líquidos, gases, densidade, mistura, processamento do tambor, impacto piezoelétrico, energia, vidro com névoa e restauração de saves. Eles verificam comportamentos físicos e regras da cadeia; não substituem uma partida humana.
+## Pesquisa
 
-A validação inicial passou em **47 testes de simulação e integração** e **15 verificações no navegador**, com interface em 1280 × 720 e 1920 × 1080 e sem erros de execução do navegador. O teste de navegador usa controles reais para início, movimento, propulsor, mineração e construção. Para repetir a cadeia industrial, usa um cenário controlado com areia, água, areia de construção e energia inicial zero; avança a simulação real e recolhe os produtos entre etapas. Não concede cristais, pesquisas, pelotas ou quartzo artificialmente. Isso valida a cadeia e o salvamento, não mede a duração de uma partida humana.
+| Ramo | Pesquisa | Custo | Dependências |
+| --- | --- | --- | --- |
+| Processamento | Tambor dos Sedimentos | 12 ouro | Fundamentos |
+| Transporte | Impulso e Triagem | 8 ouro | Fundamentos |
+| Gestão de líquidos | Hidráulica de Bolsões | 6 ouro | Fundamentos |
+| Ferramentas | Mandíbula de Campo | 6 ouro | Fundamentos |
+| Energia e calor | Ciclo da Cerâmica | 14 ouro | Tambor |
+| Processamento | Têmpera de Facetas | 18 ouro | Cerâmica + Hidráulica |
+| Automação | Cadência Autônoma | 24 ouro | Transporte + Cerâmica |
+| Exploração | Cartografia dos Estratos | 10 ouro | Mandíbula |
+| Ferramentas | Lança Térmica | 16 ouro | Cerâmica + Mandíbula |
+| Ferramentas | Mochila de Facetas | 10 ouro + 3 cristais | Vidro + Mandíbula |
+| Exploração | Jato de Profundidade | 8 ouro + 4 cristais | Cartografia + Vidro |
 
-O relatório e as capturas de cada execução de `test:browser` ficam em `.local/browser/`, ignorados pelo Git. O ponto de inspeção usado pelo teste existe somente no servidor de desenvolvimento com `?test=1`; o build publicado não o expõe.
+Nenhum ramo básico exige cristais. A fonte inicial de ouro está disponível sem pesquisa ou energia. Melhorias ampliam alcance, capacidade, força de escavação e propulsão.
 
-Roteiro de aceitação manual:
+## Mundo e objetivos
 
-1. Criar um mundo, andar, usar o propulsor e escavar.
-2. Misturar areia e água, separar polpa e fabricar pelotas.
-3. Fazer uma pelota cair sobre a prensa e observar energia e caco.
-4. Fundir quartzo, resfriar vidro e armazenar cristais no cofre.
-5. Comprar uma pesquisa e construir a máquina desbloqueada.
-6. Salvar, recarregar e confirmar a restauração e operação da fábrica.
-7. Conferir interface em 1280 × 720 e 1920 × 1080.
+Novas partidas usam **1024 × 1536 células**, com uma galeria sinuosa conectando seis regiões: Planície Âmbar, Galerias do Sedimento, Aquíferos de Ardósia, Estratos de Geada, Fendas Incandescentes e Arquivo das Profundezas. Depósitos aparecem em veios e bolsões. Nomes de região aparecem na descoberta.
+
+Três arquivos contêm desafios distribuídos: drenar uma câmara, derreter uma barreira e conduzir 12 pelotas a um mecanismo. Descubra seis regiões, resolva os três arquivos e pesquise Cartografia para conectar a rede no painel de pesquisa. A conclusão permite continuar explorando e expandindo a fábrica.
+
+## Salvamento e compatibilidade
+
+Formato **v2**, com materiais antigos mantendo os IDs 0–16 e novos IDs acrescentados a partir de 17. A migração lê partidas v1, preserva materiais, máquinas, líquidos dos tubos, energia e inventário, e converte níveis antigos em pesquisas compatíveis. Mundos antigos conservam suas dimensões para preservar construções e partículas; novos mundos usam a geração profunda.
+
+O salvamento usa **IndexedDB assíncrono**, com leitura de `prismara.world.v1` no localStorage para migração. Preserva células, consolidação dos depósitos, temperatura, queda, velocidades dos lançamentos, atividade dos chunks, estado aleatório, pesquisa, desafios, explorador, preferências, moedas e buffers de cada tubo. Não avança a simulação ao carregar. Filas de despejo são canceladas; material ainda na mochila permanece nela.
+
+Autosave a cada 25 segundos de simulação, ao ocultar a aba e ao sair. Fechar o processo imediatamente pode interromper uma gravação assíncrona; use **Salvar** ou exporte antes. Exportação/importação usa arquivos `.prismara` com validação de limites, IDs, sobreposições e dependências. O armazenamento pertence ao navegador e ao endereço da instalação.
+
+## Arquitetura e desempenho
+
+A simulação permanece separada do desenho e usa passo fixo de **30 Hz**. TypedArrays armazenam a grade; chunks de 16 × 16 dormem após estabilizar e acordam ao perder suporte. Depósitos consolidados não sofrem gravidade até serem escavados.
+
+A máscara de colisão muda somente com construções, orientação, filtros e comportas. Redes de tubos são reconstruídas ao mudar peças. O desenho atualiza apenas chunks visíveis alterados, recorta máquinas fora da câmera e reutiliza um conjunto fixo de 320 efeitos. Não faz varredura global de luz por quadro. Coordenadas da câmera são alinhadas aos pixels; o acompanhamento pausa durante arraste para estabilizar a construção.
+
+Medições, ambiente e limitações ficam em [docs/validation.md](docs/validation.md). `npm run benchmark` mede 5.400 ticks em mundos de tamanho completo. A suíte no Chrome registra FPS, tempo de simulação/renderização e operação autônoma. Relatórios, capturas e saves de teste ficam em `.local/`, ignorada pelo Git.
 
 ## Publicação
 
-O workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) instala dependências, executa testes e gera o build em pushes e pull requests de `main`. Apenas `main` pode publicar. O deploy usa o artefato estático e GitHub Pages; não envia `node_modules` nem requer credenciais no código.
+[.github/workflows/pages.yml](.github/workflows/pages.yml) instala dependências, executa testes de simulação e navegador e gera o build com **/Prismara/**. Apenas a branch principal publica o artefato estático no GitHub Pages. A existência do workflow não comprova publicação; consulte o ambiente `github-pages` após a execução.
 
-O workflow passa `/Sandustry/` como base ao Vite. GitHub Pages está configurado no repositório oficial com **Source → GitHub Actions**; em um fork, selecione essa opção em **Settings → Pages → Build and deployment**. Um push em `main` ou uma execução manual inicia a publicação. A URL prevista é [gustavol266.github.io/Sandustry/](https://gustavol266.github.io/Sandustry/); a configuração da hospedagem não comprova um deploy. Confira o resultado em Actions e o ambiente `github-pages` antes de anunciar a publicação.
+## Limites práticos
 
-Referência da infraestrutura: [documentação oficial de workflows do GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+A física é discreta e estilizada; não simula pressão hidráulica ou termodinâmica contínua. A energia usa uma bateria compartilhada. O mundo é finito, a pesquisa tem um conjunto definido de tecnologias e os desafios são gerados por regras de semente. As medições usam um desktop Ryzen 7 e Chrome headless; não garantem desempenho em computadores mais lentos ou instalações de milhares de máquinas. A campanha completa ainda não passou por estudo de balanceamento com jogadores; o teste por controles normais comprova a primeira cadeia, pesquisa hidráulica e deslocamento subterrâneo.
 
-## Escopo e limitações
-
-Esta versão é uma **vertical slice jogável**: um mundo finito com três regiões conectadas, uma cadeia industrial principal e quatro níveis de progressão. Não há multiplayer, contas, sincronização em nuvem ou suporte a controles por toque.
-
-A meta de progressão é uma sessão introdutória de 10–20 minutos. Esse intervalo é uma intenção de balanceamento, não um resultado comprovado por um estudo com jogadores. A duração depende de exploração, entendimento da física e organização da fábrica. Grandes concentrações de partículas e máquinas podem reduzir a taxa de quadros em dispositivos mais lentos.
-
-A física é discreta e estilizada, não uma simulação científica de fluidos, termodinâmica ou eletricidade. Energia é um recurso de fábrica. A arte procedural e os efeitos sonoros sintetizados mantêm o projeto autocontido. Nenhuma licença foi adicionada ou alterada; qualquer decisão de licenciamento cabe ao proprietário do repositório.
+Não há multiplayer, contas, sincronização em nuvem ou controles por toque.
