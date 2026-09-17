@@ -1,154 +1,138 @@
-import { type Game, type Panel, TOOL_NAMES, FEED_MATERIAL } from '../game/game';
-import { Mat, materials } from '../sim/materials';
-import { MACHINE_DEFS, type MachineKind, type Machine } from '../sim/machines';
-import { MISSIONS, RESEARCH } from '../game/progression';
-import { icon } from './icons';
-
-const states:Record<string,string>={empty:'Vazio',terrain:'Terreno fixo',granular:'Sólido granular',liquid:'Líquido',gas:'Gás',paste:'Material pastoso',floating:'Flutuante',structure:'Estrutura'};
-const esc=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+import {type Game,type Panel,type Tool,TOOL_NAMES,FEED_MATERIAL} from '../game/game';
+import {Mat,materials} from '../sim/materials';
+import {MACHINE_DEFS,type MachineKind,type Machine} from '../sim/machines';
+import {MISSIONS,RESEARCH} from '../game/progression';
+import {CONTROLS,keysFor} from '../game/input';
+import {REGION_NAMES,regionAt} from '../sim/terrain';
+import {icon} from './icons';
+const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const shortcut=(action:string,label:string,symbol:string)=>`<button data-panel="${action}" title="${label} [${keysFor(action)}]" aria-label="${label}">${icon(symbol,18)}<kbd>${keysFor(action)}</kbd></button>`;
 export class UI {
-  private inspectorKey='';
+  private inspectorKey='';private category='Todas';
   constructor(private game:Game){
     document.querySelector('#app')!.innerHTML=`
-      <canvas id="world" aria-label="Mundo de Prismara: explore com A/D e Espaço; use o mouse para escavar e construir"></canvas>
-      <div class="hud hidden" id="hud">
-        <div class="brand"><span class="brand-mark">${icon('crystal',34)}</span><div><h1>PRISMARA</h1><small>EXPEDIÇÃO INDUSTRIAL</small></div></div>
-        <div class="resource-strip panel" aria-label="Recursos da fábrica">
-          <div class="resource">${icon('crystal',22)}<div><strong id="crystal-count">0</strong><span class="unit">CRISTAIS NO COFRE</span></div></div>
-          <div class="resource energy">${icon('energy',21)}<div><strong id="energy-count">160</strong><span> / <span id="capacity-count">1200</span></span><span class="unit">ENERGIA</span></div></div>
-          <div class="resource"><span class="swatch" style="--swatch:#dab56d;width:17px;height:17px"></span><div><strong id="sand-count">0</strong><span class="unit">AREIA NA MOCHILA</span></div></div>
-        </div>
-        <div class="top-actions"><button class="square hide-small" data-panel="research" title="Pesquisa [T]" aria-label="Pesquisa">${icon('research',18)}</button><button class="square hide-small" data-panel="help" title="Guia [H]" aria-label="Guia">${icon('help',18)}</button><button class="square" data-panel="pause" title="Pausa [Esc]" aria-label="Pausa">${icon('pause',17)}</button></div>
-        <aside class="objectives panel" aria-label="Objetivo atual"><div class="section-label"><span><span class="dot"></span>DIÁRIO DE CAMPO</span><span class="mission-number" id="mission-number">01 / 11</span></div><h2 id="mission-title"></h2><p id="mission-detail"></p><div class="progress-track"><span id="mission-progress"></span></div><div class="objective-count"><span id="mission-count"></span><span id="mission-percent"></span></div><div class="mission-next"><b id="next-number">02</b><span id="next-title"></span></div><button class="text-button" data-panel="help">Abrir caderno de campo ${icon('help',12)}</button></aside>
-        <div class="map-panel panel"><div class="section-label"><span id="map-region">SETOR AURORA</span><button class="ghost" style="border:0;padding:0" data-action="map" title="Expandir mapa [M]" aria-label="Expandir mapa">${icon('map',13)}</button></div><canvas id="minimap" width="320" height="160" aria-label="Mapa das três regiões"></canvas><div class="map-footer"><span id="coordinates">130 : 154</span><span>N ↑ · L →</span></div></div>
-        <div class="welcome-strip" id="welcome-strip">UM MUNDO DE AREIA, MÁQUINAS E LUZ</div>
-        <div class="location" id="location">DESERTO DA SUPERFÍCIE</div><div class="fuel"><span>JATO</span><div class="progress-track"><span id="fuel-progress" style="width:100%"></span></div></div>
-        <aside class="inspector panel" id="inspector" aria-label="Inspetor de material e máquina"></aside>
-        <nav class="dock panel" aria-label="Ferramentas">
-          ${(['dig','collect','pour','build'] as const).map((tool,i)=>`<button class="tool ${i===0?'active':''}" data-tool="${tool}" title="${TOOL_NAMES[tool]} [${i+1}]" aria-label="${TOOL_NAMES[tool]}"><span class="key">${i+1}</span>${icon(tool,23)}<span class="tool-name">${TOOL_NAMES[tool]}</span></button>`).join('')}
-          <span class="divider"></span><button class="material-choice" data-panel="inventory" title="Mochila [I] · Q/E alternam material"><span class="swatch" id="selected-swatch" style="--swatch:#dab56d"></span><div><small id="selected-count">MOCHILA · 0</small><strong id="selected-material">Areia</strong></div></button>
-          <span class="divider"></span><button class="tool" data-panel="build" title="Catálogo de máquinas [B]" aria-label="Catálogo de máquinas">${icon('separator',23)}<span class="tool-name">Máquinas</span></button><button class="tool" data-panel="research" title="Pesquisa [T]" aria-label="Pesquisar tecnologias">${icon('research',23)}<span class="tool-name">Pesquisa</span></button>
-        </nav><div class="footer-hints"><kbd>A D</kbd> MOVER <kbd>ESPAÇO</kbd> PROPULSOR <kbd>Q E</kbd> ALTERNAR <kbd>R</kbd> GIRAR <kbd>RODA</kbd> ZOOM <kbd>F</kbd> SEGUIR</div><div class="save-status" id="save-status">Salvamento local</div>
-      </div><div class="toast panel" id="toast" role="status" aria-live="polite"></div><div id="modal-root"></div>`;
-    document.addEventListener('click',e=>this.click(e));
-    document.addEventListener('change',e=>this.change(e));
-    document.addEventListener('input',e=>{const target=e.target as HTMLInputElement;if(target.id==='volume'){game.preferences.volume=Number(target.value);game.audio.volume=game.preferences.volume;game.audio.play('click');}});
+      <canvas id="world" aria-label="Mundo industrial de Prismara"></canvas>
+      <div id="hud" class="hidden">
+        <div class="resource-strip panel"><span class="gold">${icon('gold',18)} <b id="gold-count">0</b><small>Ouro</small></span><span class="crystal">${icon('crystal',18)} <b id="crystal-count">0</b><small>Cristal</small></span><span class="energy">${icon('energy',18)} <b id="energy-count">0</b><small>E</small></span></div>
+        <nav class="shortcuts panel">${shortcut('inventory','Inventário','collect')}${shortcut('build','Construção','build')}${shortcut('research','Pesquisa','research')}${shortcut('upgrades','Melhorias','upgrade')}${shortcut('help','Ajuda','help')}<button data-panel="pause" title="Pausa [${keysFor('pause')}]" aria-label="Pausa">${icon('pause',18)}</button></nav>
+        <details class="objectives panel" open><summary>Objetivo <span id="mission-number"></span></summary><strong id="mission-title"></strong><p id="mission-detail"></p><div class="row"><progress id="mission-progress" value="0" max="1"></progress><span id="mission-count"></span><button data-action="mission-hint" aria-label="Dica do objetivo">?</button></div></details>
+        <aside class="map-panel panel"><div class="row map-header"><button data-action="map" title="Mapa [M]">${icon('map',16)} <span id="map-region"></span></button><button data-action="minimap" aria-label="Recolher minimapa">−</button></div><canvas id="minimap" width="128" height="192" aria-label="Mapa dos estratos"></canvas><small id="coordinates"></small></aside>
+        <aside id="inspector" class="inspector panel hidden"></aside>
+        <div class="dock panel"><div class="slots">${(['dig','collect','pour','build','select','thermal'] as Tool[]).map((t,i)=>`<button data-tool="${t}" title="${TOOL_NAMES[t]} [${i+1}]"><kbd>${i+1}</kbd>${icon(t,22)}<span>${TOOL_NAMES[t]}</span><small id="slot-count-${i}"></small></button>`).join('')}</div><button class="material-choice" data-panel="inventory"><span class="swatch" id="selected-swatch"></span><span><b id="selected-material"></b><small id="selected-count"></small></span></button></div>
+        <div class="field-status"><span id="fuel-label"></span><span id="capacity-label"></span><span id="performance-label"></span></div>
+      </div><div id="toast" class="toast panel" role="status" aria-live="polite"></div><div id="modal-root"></div>`;
+    document.addEventListener('click',e=>void this.click(e));
+    document.addEventListener('change',e=>void this.change(e));
+    document.addEventListener('input',e=>{const t=e.target as HTMLInputElement;
+      if(t.id==='volume'){game.preferences.volume=Number(t.value);game.audio.volume=game.preferences.volume;}
+      if(t.id==='ui-scale'){game.preferences.uiScale=Number(t.value);this.scale();}
+    });
   }
-  private click(e:MouseEvent){
-    const button=(e.target as HTMLElement).closest('button');if(!button)return;
-    const g=this.game;
-    if(button.dataset.panel){g.setPanel(button.dataset.panel as Panel);return;}
-    if(button.dataset.tool){if(button.dataset.tool==='build')g.setPanel('build');else g.selectTool(button.dataset.tool as 'dig'|'collect'|'pour');return;}
-    if(button.dataset.machine){g.selectBuild(button.dataset.machine as MachineKind);return;}
-    if(button.dataset.material){g.selectMaterial(Number(button.dataset.material));return;}
-    if(button.dataset.research){g.research(Number(button.dataset.research));return;}
-    const m=g.selectedMachine();
-    switch(button.dataset.action){
-      case 'new': g.newWorld();break;
-      case 'continue':g.continueWorld();break;
+  toggleMap(expanded=false){const el=document.querySelector('.map-panel')!;if(expanded){el.classList.toggle('expanded');el.classList.remove('collapsed');}else {el.classList.toggle('collapsed');el.classList.remove('expanded');}}
+  private scale(){document.documentElement.style.setProperty('--ui-scale',String(this.game.preferences.uiScale??1));}
+  private async click(e:MouseEvent){
+    const b=(e.target as HTMLElement).closest('button');if(!b||b.disabled)return;const g=this.game,m=g.selectedMachine();
+    if(b.dataset.panel){g.setPanel(b.dataset.panel as Panel);return;}
+    if(b.dataset.tool){g.selectTool(b.dataset.tool as Tool);return;}
+    if(b.dataset.machine){g.selectBuild(b.dataset.machine as MachineKind);return;}
+    if(b.dataset.material){g.selectMaterial(Number(b.dataset.material));return;}
+    if(b.dataset.research){g.research(b.dataset.research);return;}
+    if(b.dataset.category){this.category=b.dataset.category;this.showPanel();return;}
+    switch(b.dataset.action){
+      case 'new': {const seed=Number((document.getElementById('seed') as HTMLInputElement)?.value)||undefined;g.newWorld(seed);break;}
+      case 'continue':await g.continueWorld();break;
       case 'close':g.setPanel(g.started?null:'start');break;
-      case 'map':document.querySelector('.map-panel')!.classList.toggle('expanded');break;
-      case 'save':g.save();break;
-      case 'save-exit':if(g.save()){g.started=false;g.setPanel('start');}break;
-      case 'feed':if(m)g.queueFeed(m.id);break;
-      case 'feed-selected':if(m)g.queueFeed(m.id,g.material);break;
-      case 'toggle':if(m){m.enabled=!m.enabled;this.update(true);}break;
-      case 'rotate':if(m){m.rotation=(m.rotation+1)%4;this.update(true);}break;
+      case 'map':this.toggleMap(true);break;case 'minimap':this.toggleMap();break;
+      case 'save':await g.save();break;
+      case 'save-exit':if(await g.save()){g.started=false;g.setPanel('start');}break;
+      case 'export':g.exportSave();break;
+      case 'import':document.getElementById('save-import')?.click();break;
+      case 'feed':if(m)g.queueFeed(m.id);break;case 'feed-selected':if(m)g.queueFeed(m.id,g.material);break;
+      case 'toggle':if(m){if(!g.factory.setEnabled(m.id,!m.enabled))g.toast('Libere a passagem antes de fechar a comporta.');this.update(true);}break;
+      case 'rotate':g.rotateSelected();break;
       case 'remove':if(m)g.removeMachine(m.id);break;
-      case 'blueprint':g.buildThermalModule();break;
+      case 'copy':g.copySelection();break;case 'config':g.pasteConfig();break;
       case 'beacon':g.activateBeacon();break;
       case 'mission-hint':g.toast(MISSIONS[Math.min(g.progress.mission,MISSIONS.length-1)].hint);break;
+      case 'inspect-close':g.selectedId=0;g.selection.clear();this.update(true);break;
     }
   }
-  private change(e:Event){
-    const target=e.target as HTMLInputElement,g=this.game,m=g.selectedMachine();
-    if(target.id==='shake'){g.preferences.shake=target.checked;return;}
+  private async change(e:Event){
+    const t=e.target as HTMLInputElement,g=this.game,m=g.selectedMachine();
+    if(t.id==='save-import'&&t.files?.[0]){await g.importSave(t.files[0]);return;}
+    if(t.id==='shake'){g.preferences.shake=t.checked;return;}
     if(!m)return;
-    if(target.id==='filter-material')m.filter=Number(target.value);
-    if(target.id==='filter-mode')m.mode=target.value as 'material'|'density';
-    if(target.id==='density-min')m.densityMin=Math.max(0,Math.min(m.densityMax,Number(target.value)||0));
-    if(target.id==='density-max')m.densityMax=Math.max(m.densityMin,Math.min(1000,Number(target.value)||0));
-    if(target.id==='sensor-target')m.targetId=Number(target.value)||undefined;
-    this.update(true);
+    if(t.id==='filter-material')m.filter=Number(t.value);
+    if(t.id==='filter-mode')m.mode=t.value as 'material'|'density';
+    if(t.id==='density-min')m.densityMin=Math.max(0,Math.min(m.densityMax,Number(t.value)||0));
+    if(t.id==='density-max')m.densityMax=Math.max(m.densityMin,Math.min(255,Number(t.value)||0));
+    if(t.id==='sensor-target')m.targetId=Number(t.value)||undefined;
+    if(t.id==='launch-force')m.force=Math.max(1,Math.min(8,Number(t.value)||1));
+    if(t.id==='valve-interval')m.interval=Math.max(1,Math.min(120,Math.round(Number(t.value)||20)));
+    if(t.id==='launch-angle')m.angle=Math.max(0,Math.min(80,Number(t.value)||0));
+    g.factory.rebuildBlocks();g.world.markDirty(m.x,m.y);this.update(true);
   }
   showPanel(){
-    const g=this.game,p=g.panel,root=document.querySelector('#modal-root')!;
-    if(!p){root.innerHTML='';return;}
-    const close=`<button class="square ghost" data-action="close" aria-label="Fechar">✕</button>`;
-    let body='',title='',tag='CADERNO DA EXPEDIÇÃO';
+    const g=this.game,p=g.panel,root=document.querySelector('#modal-root')!;if(!p){root.innerHTML='';return;}
+    const close='<button data-action="close" class="square" aria-label="Fechar painel">✕</button>';
+    let body='',title='',tag='PRISMARA';
     if(p==='start'){
-      root.innerHTML=`<div class="modal-layer start-layer"><section class="modal start-modal" aria-label="Início de Prismara"><div class="eyebrow">UMA EXPEDIÇÃO INDUSTRIAL</div><h1 class="start-logo">PRISMARA</h1><p class="start-subtitle">Da primeira partícula<br>ao próximo horizonte.</p><p class="start-description">Um planeta de areia e luz. Escave as dunas, dê forma à matéria e construa uma fábrica movida pela própria gravidade.</p>${g.hasSave?`<button class="primary" data-action="continue">Continuar expedição <span>↗</span></button><button class="secondary" data-panel="new">Novo mundo</button>`:`<button class="primary" data-action="new">Iniciar expedição <span>↗</span></button>`}<button class="secondary" data-panel="help">Caderno de campo <span style="float:right">H</span></button><div class="start-meta"><span>EXPLORAR</span><span>•</span><span>CONSTRUIR</span><span>•</span><span>TRANSFORMAR</span></div></section><div class="start-version">PRISMARA / 0.1 · EXPEDIÇÃO AURORA</div><div class="start-coordinate">PLANETA 07 / SISTEMA DOS ECOS</div></div>`;return;
+      root.innerHTML=`<div class="modal-layer start-layer"><section class="modal start-modal"><span class="eyebrow">INDÚSTRIA SOB OS ESTRATOS</span><h1 class="start-logo">PRISMARA</h1><p class="start-subtitle">A gravidade desenha.<br>Você constrói.</p><p>Libere os grãos, molde seus caminhos e descubra os arquivos de um mundo profundo.</p>${g.hasSave?'<button class="primary wide" data-action="continue">Continuar expedição</button>':''}<label for="seed">Semente do mundo (opcional)</label><input id="seed" type="number" min="1" max="4294967295" placeholder="Uma nova paisagem"><button class="primary wide" data-action="new">Novo mundo</button><button class="wide" data-panel="help">Controles e guia</button><div class="row"><button data-action="import">Importar partida</button><small>v0.2 · 30 Hz</small></div><input id="save-import" type="file" accept=".prismara,.json" hidden><p id="modal-feedback" class="notice hidden" role="status"></p></section></div>`;return;
     }
     if(p==='build'){
-      title='Dê forma à sua fábrica';tag=`CATÁLOGO INDUSTRIAL / NÍVEL ${g.progress.tier}`;
-      body=`<p class="modal-intro">Construa em espaço livre. Entradas no topo, saídas indicadas no inspetor. Custos em grãos de areia; remover devolve o custo.</p><div class="machine-grid">${(Object.entries(MACHINE_DEFS) as [MachineKind,typeof MACHINE_DEFS[MachineKind]][]).map(([kind,d])=>`<button class="machine-card ${d.tier>g.progress.tier?'locked':''}" data-machine="${kind}" ${d.tier>g.progress.tier?'disabled':''} style="--accent:${d.color}" title="${esc(d.description)}"><span class="card-top">${icon(kind,27)}<span class="cost">${d.cost} ▪</span></span><strong>${d.name}</strong><p>${d.description}</p><span class="level">${d.tier>g.progress.tier?'BLOQUEADO · ':''}NÍVEL ${d.tier}</span></button>`).join('')}</div>${g.progress.tier>=3?`<button class="primary" style="width:100%;padding:14px;margin-top:15px" data-action="blueprint">Montar módulo térmico no posto · 22 areia</button><p class="notice">Um projeto de campo com Cadinho, Névoa e bandeja de contenção. Alimente cada máquina pelo inspetor. A bandeja pode ser escavada.</p>`:''}`;
+      title='Construção';tag='PEÇAS INDUSTRIAIS · CUSTOS EM AREIA';
+      const cats=['Todas',...new Set(Object.values(MACHINE_DEFS).map(d=>d.category!))];
+      body=`<nav class="categories">${cats.map(c=>`<button data-category="${c}" class="${c===this.category?'active':''}">${c}</button>`).join('')}</nav><p class="muted">Arraste para construir. R gira ou inverte conforme a peça. Shift + botão direito remove em área.</p><div class="machine-grid">${(Object.entries(MACHINE_DEFS) as [MachineKind,typeof MACHINE_DEFS[MachineKind]][]).filter(([,d])=>this.category==='Todas'||d.category===this.category).map(([kind,d])=>`<button class="machine-card ${g.unlocked(kind)?'':'locked'}" data-machine="${kind}" ${g.unlocked(kind)?'':'disabled'} title="${esc(d.description)}"><div class="row"><span style="color:${d.color}">${icon(kind,26)}</span><b>${d.cost} ▪</b></div><strong>${d.name}</strong><small>↓ ${d.input}<br>↗ ${d.output}</small><span class="card-note">${g.unlocked(kind)?d.rotation==='quarter'?'Rotação geométrica':d.rotation==='flip'?'Inverte sentido':'Orientação fixa':RESEARCH.find(r=>r.id===d.research)?.name}</span></button>`).join('')}</div>`;
     }
-    if(p==='research'){
-      title='Cultive novas possibilidades';tag=`PESQUISA / ${g.factory.countCrystals()} CRISTAIS NO COFRE`;
-      body=`<p class="modal-intro">As primeiras descobertas vêm da prática. Tecnologias de controle consomem cristais guardados fisicamente no Cofre Prismático.</p><div class="research-list">${RESEARCH.map(r=>`<div class="research-card ${g.progress.tier>=r.tier?'done':''}"><div class="tier-number">0${r.tier}</div><div class="research-info"><h3>${r.name}</h3><p>${r.machines}</p><p style="color:#d1c58f">${r.requires}</p></div><button ${g.progress.tier>=r.tier||!g.canResearch(r.tier)?'disabled':''} class="${g.canResearch(r.tier)?'primary':''}" data-research="${r.tier}">${g.progress.tier>=r.tier?'✓ Descoberto':r.cost?`${r.cost} ◇ · Pesquisar`:'Descobrir'}</button></div>`).join('')}</div><div class="research-card" style="margin-top:20px;border-color:#c59de34a"><span style="color:#d7b7ec">${icon('crystal',29)}</span><div class="research-info"><h3>O farol dos ecos</h3><p>Encontre a ruína a leste. Nível 4 + 24 cristais no cofre reacendem o farol e concluem a expedição.</p></div><button data-action="beacon" ${g.progress.won?'disabled':''}>${g.progress.won?'✓ Reaceso':'Ativar farol'}</button></div>`;
+    if(p==='research'||p==='upgrades'){
+      title=p==='upgrades'?'Melhorias do explorador':'Pesquisa';tag=g.factory.gold+' OURO · '+g.factory.countCrystals()+' CRISTAIS';
+      const selected=p==='upgrades'?RESEARCH.filter(r=>['tools','thermal','capacity','exploration','propulsion'].includes(r.id)):RESEARCH;
+      body=`<p class="muted">Ouro financia os ramos básicos. Cristais raros ampliam ferramentas e exploração.</p><div class="research-list">${selected.map(r=>`<article class="research-card ${g.hasResearch(r.id)?'done':''}"><div><small class="branch">${r.branch}</small><h3>${r.name}</h3><p>${r.unlocks}</p><small class="dependency">← ${r.requires.length?r.requires.map(id=>`<span class="${g.hasResearch(id)?'satisfied':''}">${RESEARCH.find(t=>t.id===id)!.name}</span>`).join(' + '):'Fundamentos disponíveis'}</small></div><button data-research="${r.id}" ${g.canResearch(r.id)?'':'disabled'} class="${g.canResearch(r.id)?'primary':''}">${g.hasResearch(r.id)?'✓ Pesquisado':r.gold+' ouro'+(r.crystals?' + '+r.crystals+' ◇':'')}</button></article>`).join('')}</div>${p==='research'?`<div class="research-card"><div><h3>Rede dos Arquivos</h3><p>${g.progress.discovered?.length??1}/6 regiões · ${g.progress.solved?.length??0}/3 arquivos resolvidos</p><small>Cartografia dos Estratos necessária</small></div><button data-action="beacon" ${g.progress.won?'disabled':''}>${g.progress.won?'✓ Conectada':'Ativar rede'}</button></div>`:''}`;
     }
     if(p==='inventory'){
-      title='Tudo começa com matéria';tag='MOCHILA DE CAMPO / SELECIONE PARA DESPEJAR';
-      body=`<p class="modal-intro">Colete com [2]. Selecione um material abaixo e segure o mouse no mundo para despejá-lo. Q/E alternam a seleção. Vidro fundido precisa ser resfriado antes da coleta.</p><div class="inventory-grid">${materials.filter(m=>m.transportable&&m.state!=='gas').map(m=>`<button class="inventory-item" data-material="${m.id}" title="${esc(m.uses)}"><span class="swatch" style="--swatch:${m.color}"></span><span><strong>${m.name}</strong><small>${g.inventory[m.id]} pixels</small></span></button>`).join('')}</div>`;
+      title='Inventário';tag=g.carried+' / '+g.capacity+' CÉLULAS';
+      body=`<p class="muted">[2] aspira grãos soltos e água. Escolha um material para despejar junto à ferramenta.</p><div class="inventory-grid">${materials.filter(m=>m.transportable&&m.state!=='gas').map(m=>`<button data-material="${m.id}" class="inventory-item" title="${esc(m.uses)}"><span class="swatch" style="--swatch:${m.color}"></span><span><b>${m.name}</b><small>${g.inventory[m.id]} células</small></span></button>`).join('')}</div>`;
     }
     if(p==='help'){
-      title='Caderno de campo';tag='EXPEDIÇÃO AURORA / GUIA DO EXPLORADOR';
-      const current=MISSIONS[Math.min(g.progress.mission,MISSIONS.length-1)];
-      body=`${g.started?`<div class="recipe-chain"><b>AGORA · ${current.title}</b><br>${current.hint}</div>`:''}<div class="help-grid"><div><h3>01 / Explore e colete</h3><p>A/D ou setas para andar. Segure Espaço para saltar e voar com a mochila. A barra JATO se recupera ao soltar.</p><p>Escavar [1] quebra o terreno e coleta recursos. Coletar [2] recolhe grãos sem destruir terra e rocha. Ferramentas alcançam 95 células. I abre a mochila.</p><h3>02 / Transforme</h3><p>Despejar [3] devolve o material da mochila ao mundo. Misture areia com água da reserva à direita. Colete a polpa resultante e despeje sobre o Tambor.</p><p>Clique em uma máquina para inspecionar e use <b>Alimentar</b>: o material da mochila cai pela entrada física, um grão de cada vez.</p><h3>03 / Construa</h3><p>B abre o catálogo. R gira, Q/E alternam peças. Verde indica espaço livre. Clique para construir; botão direito recolhe e devolve a areia investida. Máquinas podem ser suspensas.</p></div><div><h3>04 / A cadeia da luz</h3><p>Areia + Água → Polpa → Tambor → Argila + Quartzo.<br>Argila → Forno → Pelota → queda de 18 células → Prensa → Energia + Caco.<br>Quartzo + Energia → Cadinho → Vidro Fundido.<br>Vidro + Névoa → Cristal ou Fragmento.</p><p>Caco e Fragmento → Triturador → materiais reutilizáveis. Água + Energia → Gerador → Névoa Fria. Cristais no Cofre → Pesquisa [T].</p><h3>05 / Automatize e explore</h3><p>A esteira carrega somente a camada de grãos em contato. Elevadores transportam sólidos. Conecte tubos pelas bordas; a bomba aspira líquidos e a válvula os devolve ao mundo.</p><p>Filtros separam por material ou densidade. Sensores controlam uma máquina selecionada. Entupimentos aparecem no inspetor. M amplia o mapa. Arraste com o botão central para olhar ao redor; F volta ao explorador.</p><h3>06 / Não perca sua expedição</h3><p>Salvamento automático a cada 25 segundos. Esc abre pausa, salvar e volume. A ruína a leste oferece cristais recuperáveis e o objetivo final.</p></div></div><button class="primary" style="width:100%;padding:13px;margin-top:20px" data-action="close">${g.started?'Voltar à expedição':'Voltar ao início'}</button>`;
+      title='Controles e receitas';tag='GEOMETRIA, MATÉRIA E GRAVIDADE';
+      body=`<div class="help-grid"><div><h3>Primeira fábrica</h3><ol><li>Escave a margem arenosa com [1]; aspire os grãos com [2].</li><li>Coloque uma peneira no ar, um coletor abaixo e uma esteira na lateral.</li><li>Aspire água do bolsão à direita. Despeje água e areia sobre a grelha com [3].</li><li>Resíduo segue a superfície; ouro cai abaixo. Mantenha as saídas livres.</li><li>Pesquise Hidráulica: bomba no reservatório, tubos conectados e válvula sobre a grelha.</li><li>Escave areia acima da alimentação. Funis e esteiras mantêm o fluxo. Depois, uma Sonda libera depósitos automaticamente.</li></ol><h3>Indústria avançada</h3><p>Resíduo → Tambor → Argila + Quartzo.<br>Argila → Forno → Pelota → Prensa → Energia + Caco.<br>Quartzo → Cadinho → Vidro; vidro + Névoa → Cristal ou Fragmento.<br>Resíduo + Calor → Calcinado → Triturador → Argila ou Quartzo.</p><p class="notice">A peneira rende 25% de ouro adicional por unidade. É uma abstração de rendimento; não há conservação estrita da quantidade de pixels. Água é finita e consumida.</p></div><div><table class="controls"><tbody>${CONTROLS.map(c=>`<tr><td><kbd>${c.keys}</kbd></td><td>${c.label}</td></tr>`).join('')}</tbody></table></div></div>`;
     }
     if(p==='pause'){
-      title='Um instante entre as dunas';tag='EXPEDIÇÃO EM PAUSA';
-      body=`<div class="pause-content"><button class="primary" data-action="close">Continuar</button><button data-action="save">Salvar expedição</button><button data-panel="help">Caderno de campo</button><div class="setting"><label for="volume">Volume dos efeitos</label><input id="volume" type="range" min="0" max="0.6" step="0.02" value="${g.preferences.volume}" aria-label="Volume dos efeitos"></div><div class="setting"><label for="shake">Vibração da câmera</label><input id="shake" type="checkbox" ${g.preferences.shake?'checked':''}></div><button data-panel="new" class="ghost">Novo mundo</button><button data-action="save-exit" class="ghost">Salvar e voltar ao início</button><p class="notice">${g.saveLabel}. Sua partida pertence a este navegador.</p><p class="muted" style="font:9px monospace">${Math.floor(g.progress.elapsed/60)} min de expedição · ${Math.round(g.fps)} FPS · semente ${g.world.seed}</p></div>`;
+      title='Expedição em pausa';tag='PARTIDA E PREFERÊNCIAS';
+      body=`<div class="pause-content"><button class="primary wide" data-action="close">Continuar</button><div class="row"><button data-action="save">Salvar</button><button data-action="export">Exportar partida</button><button data-action="import">Importar</button></div><input id="save-import" type="file" accept=".prismara,.json" hidden><label for="volume">Volume dos efeitos</label><input id="volume" type="range" min="0" max="0.6" step="0.02" value="${g.preferences.volume}"><label for="ui-scale">Escala da interface</label><input id="ui-scale" type="range" min="0.85" max="1.4" step="0.05" value="${g.preferences.uiScale??1}"><label><input id="shake" type="checkbox" ${g.preferences.shake?'checked':''}> Vibração da câmera</label><button data-panel="new">Novo mundo</button><button data-action="save-exit">Salvar e voltar ao início</button><p class="notice">${g.saveLabel}. Autosave a cada 25 s. Exporte uma cópia para guardar fora do navegador.</p><small>Semente ${g.world.seed} · ${g.world.width} × ${g.world.height} · ${Math.round(g.fps)} FPS<br>Simulação ${g.simulationMs.toFixed(2)} ms · Render ${g.renderMs.toFixed(2)} ms</small></div>`;
     }
-    if(p==='new'){
-      title='Um novo horizonte';tag='NOVA EXPEDIÇÃO';
-      body=`<div class="pause-content"><p class="modal-intro">Um novo planeta substituirá o salvamento atual neste navegador. A expedição anterior não poderá ser restaurada.</p><button class="primary" data-action="new">Criar novo mundo</button><button class="ghost" data-action="close">Manter expedição atual</button></div>`;
-    }
-    if(p==='won'){
-      title='O planeta responde.';tag='EXPEDIÇÃO CONCLUÍDA / FAROL REACESO';
-      body=`<p class="won-banner">Você deu à areia<br>uma nova forma de brilhar.</p><p class="modal-intro">O farol dos ecos voltou a iluminar Prismara. A primeira fábrica é só o começo: explore as cavernas, recicle os materiais e crie novas rotas de produção.</p><div class="research-card"><div class="research-info"><h3>${Math.floor(g.progress.elapsed/60)} minutos de expedição</h3><p>${g.factory.counters.clay} argilas · ${g.factory.counters.impacts} impactos · ${g.progress.crystalsMade} cristais produzidos</p></div>${icon('crystal',44)}</div><button class="primary" style="width:100%;padding:15px;margin-top:20px" data-action="close">Continuar construindo</button>`;
-    }
-    root.innerHTML=`<div class="modal-layer"><section class="modal" role="dialog" aria-modal="true" aria-label="${title}"><div class="modal-header"><div><div class="eyebrow muted">${tag}</div><h2>${title}</h2></div>${close}</div>${body}</section></div>`;
+    if(p==='new'){title='Novo mundo';body='<p>Exporte a partida atual para guardá-la antes de criar outra.</p><div class="row"><button data-action="export">Exportar atual</button><button data-action="new" class="primary">Criar novo mundo</button></div>';}
+    if(p==='won'){title='Os arquivos respondem';tag='EXPEDIÇÃO PRINCIPAL CONCLUÍDA';body='<p>Os estratos estão conectados. Sua fábrica continua disponível para novas rotas, experiências e produção.</p><button class="primary wide" data-action="close">Continuar construindo</button>';}
+    root.innerHTML=`<div class="modal-layer"><section class="modal" role="dialog" aria-modal="true" aria-label="${title}"><div class="modal-header"><div><small class="eyebrow">${tag}</small><h2>${title}</h2></div>${close}</div><p id="modal-feedback" class="notice hidden" role="status"></p>${body}</section></div>`;
   }
   update(force=false){
-    const g=this.game;
-    document.querySelector('#hud')!.classList.toggle('hidden',!g.started);
-    const set=(id:string,value:string)=>{const el=document.getElementById(id);if(el&&el.textContent!==value)el.textContent=value;};
-    set('crystal-count',String(g.factory.countCrystals()));set('energy-count',String(Math.floor(g.factory.energy.value)));set('capacity-count',String(g.factory.energy.capacity));set('sand-count',String(g.inventory[Mat.Sand]));
-    set('save-status',g.saveLabel);set('selected-material',g.tool==='build'?MACHINE_DEFS[g.building].name:materials[g.material].name);set('selected-count',g.tool==='build'?`CONSTRUIR · ${MACHINE_DEFS[g.building].cost} AREIA`:`MOCHILA · ${g.inventory[g.material]}`);
+    const g=this.game;this.scale();document.querySelector('#hud')!.classList.toggle('hidden',!g.started);
+    const set=(id:string,v:string)=>{const el=document.getElementById(id);if(el&&el.textContent!==v)el.textContent=v;};
+    set('gold-count',String(g.factory.gold));set('crystal-count',String(g.factory.countCrystals()));set('energy-count',String(Math.floor(g.factory.energy.value)));
+    set('selected-material',g.tool==='build'?MACHINE_DEFS[g.building].name:materials[g.material].name);
+    set('selected-count',g.tool==='build'?MACHINE_DEFS[g.building].cost+' areia':g.inventory[g.material]+' células');
     (document.getElementById('selected-swatch') as HTMLElement).style.setProperty('--swatch',g.tool==='build'?MACHINE_DEFS[g.building].color:materials[g.material].color);
-    document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===g.tool));
+    document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===g.tool);b.disabled=b.dataset.tool==='thermal'&&!g.hasResearch('thermal');});
+    set('slot-count-0',String(g.strength)+'×');set('slot-count-1',g.carried+'/'+g.capacity);set('slot-count-2',String(g.inventory[g.material]));set('slot-count-3',String(g.inventory[Mat.Sand]));set('slot-count-4',String(g.selection.size));set('slot-count-5',g.hasResearch('thermal')?'E':'🔒');
+    const mission=MISSIONS[Math.min(g.progress.mission,MISSIONS.length-1)],value=Math.min(mission.goal,mission.value(g.context()));
+    set('mission-number',String(Math.min(g.progress.mission+1,MISSIONS.length))+'/'+MISSIONS.length);set('mission-title',mission.title);set('mission-detail',mission.detail);set('mission-count',Math.floor(value)+'/'+mission.goal);
+    (document.getElementById('mission-progress') as HTMLProgressElement).value=value/mission.goal;
+    set('fuel-label','Jato '+Math.floor(g.player.fuel)+'%');set('capacity-label','Mochila '+g.carried+'/'+g.capacity);set('performance-label',Math.round(g.fps)+' FPS');
     if(!g.renderer)return;
-    const region=g.player.y>205?'CAVERNAS MINERAIS':g.player.x>505?'RUÍNA PRISMÁTICA':'DESERTO DA SUPERFÍCIE';
-    set('location',region);set('map-region',g.player.x>505?'SETOR DOS ECOS':g.player.y>205?'SUBSOLO MINERAL':'SETOR AURORA');set('coordinates',`${Math.round(g.player.x).toString().padStart(3,'0')} : ${Math.round(g.player.y).toString().padStart(3,'0')}`);
-    (document.getElementById('fuel-progress') as HTMLElement).style.width=`${g.player.fuel}%`;
-    document.querySelector('#welcome-strip')!.classList.toggle('hidden',g.progress.elapsed>30);
-    const n=Math.min(g.progress.mission,MISSIONS.length-1),mission=MISSIONS[n],value=Math.min(mission.goal,mission.value(g.context()));
-    set('mission-number',`${String(n+1).padStart(2,'0')} / ${MISSIONS.length}`);set('mission-title',mission.title);set('mission-detail',`${mission.detail}. ${mission.hint}`);set('mission-count',`${value} / ${mission.goal}`);set('mission-percent',`${Math.round(value/mission.goal*100)}%`);(document.querySelector('#mission-progress') as HTMLElement).style.width=`${value/mission.goal*100}%`;
-    set('next-number',n+1<MISSIONS.length?String(n+2).padStart(2,'0'):'✓');set('next-title',n+1<MISSIONS.length?MISSIONS[n+1].title:'Continue explorando e construindo.');
+    set('map-region',REGION_NAMES[regionAt(g.world,g.player.x,g.player.y)]);set('coordinates',Math.round(g.player.x)+' : '+Math.round(g.player.y));
     this.inspector(force);
   }
   private inspector(force:boolean){
-    const g=this.game,el=document.querySelector('#inspector')!;
-    const p=g.renderer.worldPoint(g.input.mouseX,g.input.mouseY),selected=g.selectedMachine();
-    const m=selected??g.machineAt(p.x,p.y);
-    if(m){
-      const key=`machine${m.id}-${m.rotation}-${m.enabled}`;
-      if(key!==this.inspectorKey||force){this.inspectorKey=key;el.innerHTML=this.machineInspector(m);}
-      const status=document.querySelector('#machine-status');if(status)status.textContent=m.status;
-      const feed=document.querySelector('#feed-label');if(feed){const remaining=g.isFeeding(m.id);feed.textContent=remaining?`Alimentando · ${remaining} restantes`:m.kind==='press'?'Lançar 12 pelotas · queda de 24 células':`Alimentar · ${materials[FEED_MATERIAL[m.kind]??g.material].name}`;}
-      const pipe=document.querySelector('#pipe-status');if(pipe){const net=g.factory.pipes.inspect(m.id);pipe.textContent=`Rede ${net.networkId+1} · ${net.count}/${net.capacity} pixels · ${net.mixed?'Mistura':materials[net.material].name}`;}
-      // Hover inspection should not expose actions on an unrelated previously selected machine.
-      if(!selected){g.selectedId=m.id;}
-      return;
-    }
-    const mat=g.world.get(p.x,p.y),d=materials[mat],index=g.world.inBounds(p.x,p.y)?g.world.index(p.x,p.y):-1,temp=index>=0?g.world.temperature[index]:24;
-    const key=`mat${mat}-${temp}-${g.tool}`;if(key===this.inspectorKey&&!force)return;this.inspectorKey=key;
-    el.innerHTML=`<div class="section-label"><span>INSPEÇÃO DE CAMPO</span><span style="color:${d.color}">▪</span></div><h3>${d.name}</h3><div class="status">${states[d.state]}</div><div class="properties"><span>ρ ${d.density}</span><span>${temp} °C</span></div><p>${d.uses}</p><div class="section-label" style="border-top:1px solid var(--line);padding-top:9px;margin-top:9px"><span>${TOOL_NAMES[g.tool]}</span><span>${g.tool==='build'?'R · GIRAR':'Q / E'}</span></div>`;
+    const g=this.game,el=document.querySelector('#inspector')!,m=g.selectedMachine();el.classList.toggle('hidden',!m);
+    if(!m){this.inspectorKey='';return;}
+    const key=JSON.stringify([m.id,m.rotation,m.enabled,m.mode,m.filter,m.densityMin,m.densityMax,m.force,m.angle,m.interval,m.targetId]);
+    if(force||key!==this.inspectorKey){this.inspectorKey=key;el.innerHTML=this.machineInspector(m);}
+    document.getElementById('machine-status')!.textContent=m.status;
+    const feed=document.getElementById('feed-label');if(feed)feed.textContent=g.isFeeding(m.id)?'Despejando '+g.isFeeding(m.id)+' restantes':'Despejar 16 · '+materials[FEED_MATERIAL[m.kind]??g.material].name;
+    const pipe=document.getElementById('pipe-status');if(pipe){const n=g.factory.pipes.inspect(m.id);pipe.textContent='Rede '+(n.networkId+1)+' · '+n.count+'/'+n.capacity+' · '+materials[n.material].name;}
   }
   private machineInspector(m:Machine){
-    const g=this.game,d=MACHINE_DEFS[m.kind],configurable=m.kind==='filter'||m.kind==='sensor';
-    const materialOptions=materials.filter(d=>d.transportable).map(d=>`<option value="${d.id}" ${d.id===m.filter?'selected':''}>${d.name}</option>`).join('');
-    return `<div class="section-label"><span>MÁQUINA / ${m.id.toString().padStart(2,'0')}</span><span style="color:${d.color}">${icon(m.kind,16)}</span></div><h3>${d.name}</h3><div class="status" id="machine-status">${esc(m.status)}</div><p>${d.description}</p><p style="font-size:9px">↓ ${d.input}<br>↗ ${d.output}</p>${configurable?`<label class="section-label" for="filter-material">MATERIAL DETECTADO</label><select id="filter-material" aria-label="Material do filtro ou sensor">${materialOptions}</select>`:''}${m.kind==='filter'?`<select id="filter-mode" aria-label="Modo do filtro"><option value="material" ${m.mode==='material'?'selected':''}>Por material</option><option value="density" ${m.mode==='density'?'selected':''}>Por intervalo de densidade</option></select>${m.mode==='density'?`<div class="row"><input id="density-min" type="number" min="0" max="1000" value="${m.densityMin}" aria-label="Densidade mínima"><input id="density-max" type="number" min="0" max="1000" value="${m.densityMax}" aria-label="Densidade máxima"></div>`:''}`:''}${m.kind==='sensor'?`<label class="section-label" for="sensor-target">MÁQUINA CONTROLADA</label><select id="sensor-target"><option value="">Mais próxima</option>${g.factory.machines.filter(t=>t.id!==m.id&&t.kind!=='sensor').map(t=>`<option value="${t.id}" ${m.targetId===t.id?'selected':''}>${MACHINE_DEFS[t.kind].name} #${t.id}</option>`).join('')}</select>`:''}${['pipe','pump','valve'].includes(m.kind)?'<p id="pipe-status"></p>':''}${FEED_MATERIAL[m.kind]!==undefined?'<button class="wide primary" data-action="feed" id="feed-label">Alimentar</button>':''}${m.kind==='crusher'?'<button class="wide" data-action="feed-selected">Alimentar material selecionado</button>':''}<div class="row"><button data-action="toggle">${m.enabled?'Desligar':'Ligar'}</button><button data-action="rotate">Girar ↻</button><button data-action="remove" class="danger" title="Recolher e devolver o custo de construção">Recolher</button></div>`;
+    const g=this.game,d=MACHINE_DEFS[m.kind],options=materials.filter(d=>d.transportable).map(d=>`<option value="${d.id}" ${d.id===m.filter?'selected':''}>${d.name}</option>`).join('');
+    return `<div class="row"><b>${d.name} #${m.id}</b><button data-action="inspect-close" aria-label="Fechar inspetor">✕</button></div><div id="machine-status" class="status">${esc(m.status)}</div><p>${d.description}</p><small>↓ ${d.input}<br>↗ ${d.output}</small>${['filter','sensor'].includes(m.kind)?`<label for="filter-material">Material</label><select id="filter-material">${options}</select>`:''}${m.kind==='filter'?`<select id="filter-mode" aria-label="Modo do filtro"><option value="material" ${m.mode==='material'?'selected':''}>Material</option><option value="density" ${m.mode==='density'?'selected':''}>Densidade</option></select>${m.mode==='density'?`<div class="row"><input id="density-min" type="number" value="${m.densityMin}" aria-label="Densidade mínima"><input id="density-max" type="number" value="${m.densityMax}" aria-label="Densidade máxima"></div>`:''}`:''}${m.kind==='sensor'?`<label for="sensor-target">Máquina controlada</label><select id="sensor-target"><option value="">Mais próxima</option>${g.factory.machines.filter(t=>t.id!==m.id&&t.kind!=='sensor').map(t=>`<option value="${t.id}" ${m.targetId===t.id?'selected':''}>${MACHINE_DEFS[t.kind].name} #${t.id}</option>`).join('')}</select>`:''}${m.kind==='launcher'?`<div class="row"><label>Força<input id="launch-force" type="number" min="1" max="8" value="${m.force??5}"></label><label>Ângulo<input id="launch-angle" type="number" min="0" max="80" value="${m.angle??35}"></label></div>`:''}${m.kind==='valve'?`<label for="valve-interval">Intervalo da válvula (ticks)</label><input id="valve-interval" type="number" min="1" max="120" value="${m.interval??20}">`:''}${['pipe','pump','valve'].includes(m.kind)?'<small id="pipe-status"></small>':''}${FEED_MATERIAL[m.kind]!==undefined?'<button class="wide" data-action="feed" id="feed-label">Despejar 16 (perto da ferramenta)</button>':''}<div class="row"><button data-action="toggle">${m.kind==='gate'?(m.enabled?'Abrir':'Fechar'):(m.enabled?'Desligar':'Ligar')}</button><button data-action="rotate" ${d.rotation==='none'?'disabled':''}>${d.rotation==='quarter'?'Girar':'Inverter'}</button><button data-action="remove" class="danger">Recolher</button></div><div class="row"><button data-action="copy">Copiar [C]</button><button data-action="config" ${g.clipboard.length?'':'disabled'}>Aplicar configuração</button></div>`;
   }
 }

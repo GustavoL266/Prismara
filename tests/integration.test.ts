@@ -70,19 +70,27 @@ test('magnetic lift gains height against gravity and throws only solid particles
   assert.ok(index % world.width >= lift.x + lift.w, 'quartz should leave the lateral top port');
 });
 
-test('sand to research loop conserves collected resources and is powered by physical ceramic impacts', () => {
+test('wet sand funds basic research with gold before the advanced ceramic energy and glass loop', () => {
   const world = new World(320, 200, 91207), factory = new Factory(world);
   factory.energy.value = 0;
   const inventory = Array(materials.length).fill(0) as number[];
   for (let x = 0; x < world.width; x++) world.set(x, 180, Mat.Wall);
   // Adjacent checkerboard of initial sand and water: reaction products are harvested, never synthesized.
-  for (let y = 145; y < 157; y++) for (let x = 10; x < 38; x++) world.set(x, y, (x + y) % 2 ? Mat.Sand : Mat.Water);
-  for (let y = 150; y < 158; y++) for (let x = 50; x < 60; x++) world.set(x, y, Mat.Water);
+  for (let y = 145; y < 165; y++) for (let x = 10; x < 50; x++) world.set(x, y, (x + y) % 2 ? Mat.Sand : Mat.Water);
+  for (let y = 150; y < 158; y++) for (let x = 60; x < 70; x++) world.set(x, y, Mat.Water);
   advance(world, factory, 120);
-  harvest(world, inventory, [Mat.Pulp, Mat.Water, Mat.Sand]);
-  assert.ok(inventory[Mat.Pulp] >= 260, `mixture yielded ${inventory[Mat.Pulp]} pulp`);
-  const separator = factory.add('separator', 30, 30)!;
-  advance(world, factory, 1800, [{ machine: separator, material: Mat.Pulp, remaining: 280 }], inventory);
+  harvest(world, inventory, [Mat.WetSand, Mat.Water, Mat.Sand]);
+  assert.equal(inventory[Mat.WetSand],400);
+  const sieve=factory.add('sieve',30,30)!;
+  advance(world,factory,2400,[{machine:sieve,material:Mat.WetSand,remaining:400}],inventory);
+  harvest(world,inventory,[Mat.Residue,Mat.Gold]);
+  assert.equal(inventory[Mat.Residue]+world.count(Mat.WetSand),400,'overflow grains stay physical instead of being deleted');
+  assert.equal(factory.counters.wet,inventory[Mat.Residue]);assert.ok(inventory[Mat.Gold]>=70);
+  const collector=factory.add('collector',270,50)!;
+  advance(world,factory,180,[{machine:collector,material:Mat.Gold,remaining:16}],inventory);
+  assert.equal(factory.gold,16);assert.equal(factory.energy.value,0);
+  const separator = factory.add('separator', 30, 60)!;
+  advance(world, factory, 2200, [{ machine: separator, material: Mat.Residue, remaining: inventory[Mat.Residue] }], inventory);
   harvest(world, inventory, [Mat.Clay, Mat.Quartz]);
   assert.ok(inventory[Mat.Clay] >= 18); assert.ok(inventory[Mat.Quartz] >= 40, `only ${inventory[Mat.Quartz]} quartz`);
   const kiln = factory.add('kiln', 65, 30)!;
@@ -101,11 +109,10 @@ test('sand to research loop conserves collected resources and is powered by phys
   assert.equal(factory.countCrystals(), 12); assert.equal(factory.spendCrystals(12), true); assert.equal(factory.countCrystals(), 0);
   const crusher = factory.add('crusher', 120, 70)!;
   const sandBefore = world.count(Mat.Sand);
-  const pulpBefore = world.reactionCounts.pulp;
+  const wetBefore = world.reactionCounts.wet;
   advance(world, factory, 180, [{ machine: crusher, material: Mat.Shard, remaining: 12 }], inventory);
   assert.equal(factory.counters.recycled, 12);
-  // Recycled sand may immediately mix with remaining water: each two new pulp
-  // cells contain one recycled sand cell, so count chemistry as well as grains.
-  assert.equal(world.count(Mat.Sand) - sandBefore + (world.reactionCounts.pulp - pulpBefore) / 2, 12);
+  // Recycling may immediately wet a sand grain; count it once in either state.
+  assert.equal(world.count(Mat.Sand) - sandBefore + world.reactionCounts.wet-wetBefore, 12);
   assert.ok(factory.energy.value > 0);
 });

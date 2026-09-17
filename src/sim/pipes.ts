@@ -48,7 +48,6 @@ export class PipeSystem {
       temperature: count ? Math.round(filled.reduce((sum, m) => sum + m.buffer!.temperature * m.buffer!.count, 0) / count) : 22 };
   }
   step(machines: Machine[]): void {
-    this.rebuild(machines);
     for (const group of this.networks) {
       for (const pump of group.filter(m => m.kind === 'pump' && m.enabled && m.signal !== false)) {
         let didPump = false;
@@ -74,12 +73,13 @@ export class PipeSystem {
         else if (pump.status !== 'Rede cheia') pump.status = 'Sem líquido';
       }
       for (const valve of group.filter(m => m.kind === 'valve' && m.enabled && m.signal !== false)) {
+        if(this.world.tick%(valve.interval??20))continue;
         const source = group.find(m => m.buffer!.count > 0);
         if (!source) { valve.status = 'Rede vazia'; continue; }
         const d = valve.rotation % 4;
         const x = d === 1 ? valve.x + valve.w : d === 3 ? valve.x - 1 : valve.x + Math.floor(valve.w / 2);
         const y = d === 0 ? valve.y + valve.h : d === 2 ? valve.y - 1 : valve.y + Math.floor(valve.h / 2);
-        if (this.world.get(x, y) !== Mat.Air || this.world.blocked[this.world.index(x, y)]) { valve.status = 'Saída bloqueada'; continue; }
+        if (!this.world.accepts(x,y,source.buffer!.material) || this.world.get(x, y) !== Mat.Air) { valve.status = 'Saída bloqueada'; continue; }
         this.world.set(x, y, source.buffer!.material, source.buffer!.temperature);
         source.buffer!.count--;
         if (!source.buffer!.count) source.buffer!.material = Mat.Air;

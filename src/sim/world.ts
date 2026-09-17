@@ -12,13 +12,19 @@ export class World {
   readonly seed: number;
   tick = 0;
   rngState: number;
-  reactionCounts: Record<string, number> = { pulp: 0, crystal: 0, glass: 0 };
+  reactionCounts: Record<string, number> = { pulp: 0, crystal: 0, glass: 0, wet: 0, calcined: 0 };
   readonly cells: Uint8Array;
   readonly temperature: Int16Array;
   /** Vertical distance since emission. Kept on a blocked cell for machine impact detection. */
   readonly fall: Uint16Array;
   /** Machine id occupying each cell; zero means the cell accepts particles. */
   readonly blocked: Int32Array;
+  /** Consolidated deposits stay attached until excavated; ids remain stable. */
+  readonly consolidated: Uint8Array;
+  /** Bits of material ids allowed through a machine footprint. Player still collides. */
+  readonly passage: Uint32Array;
+  readonly velocityX: Int8Array;
+  readonly velocityY: Int8Array;
   readonly chunksX: number;
   readonly chunksY: number;
   readonly active: Uint8Array;
@@ -26,7 +32,7 @@ export class World {
   private readonly scanning: Uint8Array;
   private readonly visited: Uint32Array;
 
-  constructor(width = 640, height = 320, seed = 73417) {
+  constructor(width = 1024, height = 1536, seed = 73417) {
     this.width = width;
     this.height = height;
     this.seed = seed >>> 0;
@@ -36,6 +42,10 @@ export class World {
     this.temperature = new Int16Array(size).fill(DEFAULT_TEMPERATURE);
     this.fall = new Uint16Array(size);
     this.blocked = new Int32Array(size);
+    this.passage = new Uint32Array(size);
+    this.consolidated = new Uint8Array(size);
+    this.velocityX = new Int8Array(size);
+    this.velocityY = new Int8Array(size);
     this.visited = new Uint32Array(size);
     this.chunksX = Math.ceil(width / CHUNK_SIZE);
     this.chunksY = Math.ceil(height / CHUNK_SIZE);
@@ -55,6 +65,20 @@ export class World {
   index(x: number, y: number): number { return y * this.width + x; }
   inBounds(x: number, y: number): boolean { return x >= 0 && y >= 0 && x < this.width && y < this.height; }
   get(x: number, y: number): Mat { return this.inBounds(x, y) ? this.cells[this.index(x, y)] : Mat.Rock; }
+  accepts(x: number, y: number, mat: Mat): boolean {
+    if (!this.inBounds(x, y)) return false;
+    const i = this.index(x, y);
+    return !this.blocked[i] || (this.passage[i] & (1 << mat)) !== 0;
+  }
+  /** Release a deposit in place, never send it to inventory. */
+  excavate(x: number, y: number): boolean {
+    if (!this.inBounds(x,y)) return false;
+    const i=this.index(x,y), mat=this.cells[i];
+    if (this.blocked[i] || mat===Mat.Air || mat===Mat.Wall) return false;
+    if (!this.consolidated[i] && materials[mat].state!=='terrain') return false;
+    const output=mat===Mat.Earth?Mat.Sand:mat===Mat.Rock?Mat.Residue:mat===Mat.Ice?Mat.Water:mat;
+    this.set(x,y,output); return true;
+  }
 
   set(x: number, y: number, mat: Mat, temperature = materials[mat].temperature): boolean {
     if (!this.inBounds(x, y)) return false;
@@ -62,6 +86,8 @@ export class World {
     this.cells[i] = mat;
     this.temperature[i] = temperature;
     this.fall[i] = 0;
+    this.consolidated[i] = 0;
+    this.velocityX[i] = 0; this.velocityY[i] = 0;
     this.markDirty(x, y);
     return true;
   }
@@ -71,12 +97,14 @@ export class World {
     this.temperature.fill(DEFAULT_TEMPERATURE);
     this.fall.fill(0);
     this.blocked.fill(0);
+    this.passage.fill(0); this.consolidated.fill(0);
+    this.velocityX.fill(0); this.velocityY.fill(0);
     this.visited.fill(0);
     this.active.fill(0);
     this.dirty.fill(1);
     this.tick = 0;
     this.rngState = this.seed || 1;
-    this.reactionCounts = { pulp: 0, crystal: 0, glass: 0 };
+    this.reactionCounts = { pulp: 0, crystal: 0, glass: 0, wet: 0, calcined: 0 };
   }
 
   /** Wake this chunk and its neighbors, including cells unsupported by a dig. */
@@ -100,6 +128,9 @@ export class World {
     const m = this.cells[i], t = this.temperature[i], f = this.fall[i];
     this.cells[i] = this.cells[j]; this.temperature[i] = this.temperature[j]; this.fall[i] = this.fall[j];
     this.cells[j] = m; this.temperature[j] = t; this.fall[j] = f;
+    const vx=this.velocityX[i],vy=this.velocityY[i];
+    this.velocityX[i]=this.velocityX[j];this.velocityY[i]=this.velocityY[j];
+    this.velocityX[j]=vx;this.velocityY[j]=vy;
     this.visited[i] = this.tick; this.visited[j] = this.tick;
     this.markDirty(i % this.width, Math.floor(i / this.width));
     this.markDirty(j % this.width, Math.floor(j / this.width));
@@ -119,7 +150,7 @@ export class World {
         for (let dx = -radius; dx <= radius && emitted < count; dx++) {
           if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
           const xx = x + dx, yy = y + dy;
-          if (this.inBounds(xx, yy) && this.get(xx, yy) === Mat.Air && !this.blocked[this.index(xx, yy)]) {
+          if (this.accepts(xx, yy, mat) && this.get(xx, yy) === Mat.Air) {
             this.set(xx, yy, mat, temperature); emitted++;
           }
         }
@@ -134,12 +165,14 @@ export class World {
     this.cells[i] = mat;
     if (temperature !== undefined) this.temperature[i] = temperature;
     this.fall[i] = 0;
+    this.consolidated[i]=0;this.velocityX[i]=0;this.velocityY[i]=0;
     this.visited[i] = this.tick;
     this.wakeIndex(i);
   }
 
   private contact(i: number, j: number): boolean {
     const a = this.cells[i], b = this.cells[j];
+    if (this.consolidated[i] || this.consolidated[j]) return false;
     for (const rule of CONTACT_REACTIONS) {
       const forward = a === rule.first && b === rule.second;
       if (!forward && !(a === rule.second && b === rule.first)) continue;
@@ -153,7 +186,7 @@ export class World {
         const average = Math.round((this.temperature[i] + this.temperature[j]) / 2);
         this.replace(first, rule.firstOutput, average);
         this.replace(second, rule.secondOutput, average);
-        this.reactionCounts.pulp += 2;
+        this.reactionCounts.wet = (this.reactionCounts.wet ?? 0) + 1;
       }
       return true;
     }
@@ -174,7 +207,8 @@ export class World {
         this.replace(i, Mat.Water, 38); return true;
       }
       // One edge per tick keeps heat work bounded and avoids directional bias.
-      if (n === 0 && Math.abs(this.temperature[i] - this.temperature[j]) > 3) {
+      const frozenEdge=mat===Mat.Ice||this.cells[j]===Mat.Ice;
+      if (n === 0 && (!frozenEdge||Math.max(this.temperature[i],this.temperature[j])>50) && Math.abs(this.temperature[i] - this.temperature[j]) > 3) {
         const transfer = Math.trunc((this.temperature[i] - this.temperature[j]) *
           Math.min(materials[mat].conductivity, materials[this.cells[j]].conductivity) * REACTIONS.physics.heatExchange);
         if (transfer !== 0) {
@@ -185,6 +219,10 @@ export class World {
       }
     }
     const temperature = this.temperature[i];
+    if (mat === Mat.Residue && temperature >= REACTIONS.calcining.temperature) {
+      this.replace(i,Mat.Calcined,temperature);this.reactionCounts.calcined=(this.reactionCounts.calcined??0)+1;return true;
+    }
+    if (mat === Mat.Ice && temperature > 0) { this.replace(i,Mat.Water,4);return true; }
     if (materials[mat].flammability > 0 && mat === REACTIONS.ignition.input && temperature >= REACTIONS.ignition.temperature) {
       this.replace(i, REACTIONS.ignition.output, REACTIONS.ignition.outputTemperature); return true;
     }
@@ -203,10 +241,11 @@ export class World {
     if (mat === Mat.Clay && temperature >= REACTIONS.ceramic.temperature) {
       this.replace(i, Mat.Pellet, temperature); return true;
     }
-    if (temperature !== DEFAULT_TEMPERATURE) {
+    const ambient=mat===Mat.Ice?-20:DEFAULT_TEMPERATURE;
+    if (temperature !== ambient) {
       this.active[Math.floor(y / CHUNK_SIZE) * this.chunksX + Math.floor(x / CHUNK_SIZE)] = 1;
       if ((this.tick + i) % REACTIONS.physics.ambientCoolingPeriod === 0) {
-        this.temperature[i] += temperature < DEFAULT_TEMPERATURE ? 1 : -1;
+        this.temperature[i] += temperature < ambient ? 1 : -1;
       }
     }
     return false;
@@ -215,7 +254,7 @@ export class World {
   private canMove(i: number, x: number, y: number, vertical: number): boolean {
     if (!this.inBounds(x, y)) return false;
     const j = this.index(x, y);
-    if (this.blocked[j]) return false;
+    if (!this.accepts(x,y,this.cells[i]) || this.consolidated[j]) return false;
     const target = this.cells[j];
     if (target === Mat.Air) return true;
     const moving = materials[this.cells[i]], other = materials[target];
@@ -237,6 +276,28 @@ export class World {
     else if (y < originalY) this.fall[j] = 0;
     return true;
   }
+  launch(x:number,y:number,vx:number,vy:number): void {
+    const i=this.index(x,y);this.velocityX[i]=Math.max(-8,Math.min(8,Math.round(vx)));
+    this.velocityY[i]=Math.max(-8,Math.min(8,Math.round(vy)));this.markDirty(x,y);
+  }
+  private ballistic(i:number,x:number,y:number): boolean {
+    const vx=this.velocityX[i],vy=this.velocityY[i];
+    if (!vx&&!vy) return false;
+    const steps=Math.max(Math.abs(vx),Math.abs(vy));let current=i,cx=x,cy=y;
+    for (let n=1;n<=steps;n++) {
+      const tx=x+Math.round(vx*n/steps),ty=y+Math.round(vy*n/steps);
+      if(tx===cx&&ty===cy)continue;
+      // The intermediate grid cells are traversed; a collision ends flight here.
+      if(!this.accepts(tx,ty,this.cells[current])||this.get(tx,ty)!==Mat.Air ||
+         (tx!==cx&&ty!==cy && (!this.accepts(tx,cy,this.cells[current])||this.get(tx,cy)!==Mat.Air||!this.accepts(cx,ty,this.cells[current])||this.get(cx,ty)!==Mat.Air))) {
+        this.velocityX[current]=0;this.velocityY[current]=0;return true;
+      }
+      const target=this.index(tx,ty);this.swap(current,target);this.fall[target]=ty>cy?this.fall[target]+1:0;
+      current=target;cx=tx;cy=ty;
+    }
+    if(this.tick%3===0)this.velocityX[current]-=Math.sign(vx);
+    this.velocityY[current]=Math.min(8,vy+1);this.markDirty(cx,cy);return true;
+  }
 
   step(): void {
     this.tick = (this.tick + 1) >>> 0;
@@ -248,16 +309,22 @@ export class World {
     for (let row = 0; row < this.height; row++) {
       const y = reverse ? this.height - 1 - row : row;
       const chunkRow = Math.floor(y / CHUNK_SIZE) * this.chunksX;
-      for (let col = 0; col < this.width; col++) {
-        const x = reverse ? this.width - 1 - col : col;
-        if (!this.scanning[chunkRow + Math.floor(x / CHUNK_SIZE)]) continue;
+      for (let segment = 0; segment < this.chunksX; segment++) {
+        const chunkX=reverse?this.chunksX-1-segment:segment;
+        if(!this.scanning[chunkRow+chunkX])continue;
+        const from=chunkX*CHUNK_SIZE,to=Math.min(this.width,from+CHUNK_SIZE);
+        for(let col=0;col<to-from;col++) {
+        const x=reverse?to-1-col:from+col;
         const i = this.index(x, y), mat = this.cells[i];
         if (mat === Mat.Air || this.visited[i] === this.tick) continue;
         const def = materials[mat];
-        if (def.movement === 'none' && this.temperature[i] === DEFAULT_TEMPERATURE) continue;
+        if (this.consolidated[i] && this.temperature[i] === def.temperature) continue;
+        if (def.movement === 'none' && this.temperature[i] === DEFAULT_TEMPERATURE && mat!==Mat.Ice) continue;
         this.visited[i] = this.tick;
         if (this.thermal(i, x, y)) continue;
+        if (this.consolidated[i]) continue;
         if (def.movement === 'none') continue;
+        if (this.ballistic(i,x,y)) continue;
         if ((def.movement === 'viscous' && this.tick % REACTIONS.physics.pastePeriod !== 0) ||
             (def.movement === 'drift' && this.tick % REACTIONS.physics.mistPeriod !== 0)) {
           this.active[chunkRow + Math.floor(x / CHUNK_SIZE)] = 1; continue;
@@ -287,6 +354,7 @@ export class World {
           const below = materials[this.cells[i + this.width]];
           if (below.state === 'granular' && def.density - below.density >= REACTIONS.physics.granularDensityGap)
             this.active[chunkRow + Math.floor(x / CHUNK_SIZE)] = 1;
+        }
         }
       }
     }

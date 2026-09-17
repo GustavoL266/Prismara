@@ -58,14 +58,15 @@ test('dense quartz displaces water without losing either particle', () => {
   assert.equal(world.count(Mat.Water), 90);
 });
 
-test('sand plus water converts to exactly two pulp pixels', () => {
+test('sand consumes one finite water cell and becomes one wet sand cell', () => {
   const world = new World(12, 16, 25);
   world.set(5, 8, Mat.Sand); world.set(6, 8, Mat.Water);
   world.step();
-  assert.equal(world.count(Mat.Pulp), 2);
+  assert.equal(world.count(Mat.WetSand), 1);
   assert.equal(world.count(Mat.Sand), 0);
   assert.equal(world.count(Mat.Water), 0);
-  assert.equal(world.reactionCounts.pulp, 2);
+  assert.equal(world.reactionCounts.wet, 1);
+  assert.equal(world.count(Mat.Pulp), 0);
 });
 
 test('paste falls more slowly than water', () => {
@@ -119,7 +120,7 @@ test('a sleeping pile wakes after support is excavated', () => {
   assert.ok(position(world, Mat.Sand).y > 12);
 });
 
-test('terrain generation is repeatable and includes all three connected destinations', () => {
+test('deep terrain generation is repeatable with accessible start resources and deposits', () => {
   const a = new World(), b = new World();
   generateTerrain(a); generateTerrain(b);
   assert.deepEqual(a.cells, b.cells);
@@ -145,5 +146,6 @@ test('starter basin retains water instead of completing the mixing objective on 
   assert.equal(world.reactionCounts.pulp, 0);
   assert.equal(world.reactionCounts.crystal, 0, 'ruin rewards are not manufactured crystals');
   assert.equal(world.count(Mat.Water), initial);
-  world.clear(); assert.deepEqual(world.reactionCounts, { pulp: 0, crystal: 0, glass: 0 });
+  assert.equal(world.reactionCounts.wet,0);
+  world.clear(); assert.deepEqual(world.reactionCounts, { pulp: 0, crystal: 0, glass: 0, wet:0,calcined:0 });
 });

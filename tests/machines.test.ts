@@ -98,9 +98,10 @@ test('sealed or structurally blocked gas outlet preserves quartz and energy', ()
   for (const solidMachine of [false, true]) {
     const { world, factory } = setup(); const m = factory.add('crucible', 30, 20)!;
     const ox = m.x + Math.floor(m.w / 2), oy = m.y + m.h;
-    world.set(m.x + 3, m.y - 1, Mat.Quartz); world.set(ox, oy, Mat.Mist, -45);
+    world.set(m.x + 3, m.y - 1, Mat.Quartz);
     if (solidMachine) assert.ok(factory.add('belt', m.x, oy));
     else for (const [dx, dy] of [[0, 1], [-1, 0], [1, 0]]) world.set(ox + dx, oy + dy, Mat.Wall);
+    world.set(ox, oy, Mat.Mist, -45);
     const energyBefore = factory.energy.value;
     factory.step();
     assert.equal(world.count(Mat.Quartz), 1); assert.equal(world.count(Mat.Mist), 1);
@@ -143,8 +144,10 @@ test('density gate drops accepted grains and conveys rejected grains', () => {
   const { world, factory } = setup(); const m = factory.add('filter', 30, 20)!;
   m.mode = 'density'; m.densityMin = 200; m.densityMax = 260;
   world.set(35, 19, Mat.Quartz); world.set(40, 19, Mat.Sand); factory.step();
-  assert.equal(world.get(35, 24), Mat.Quartz);
+  assert.equal(world.get(35, 20), Mat.Quartz,'accepted grains enter the grille instead of teleporting to its bottom');
   assert.equal(world.get(41, 19), Mat.Sand);
+  for(let i=0;i<5;i++){world.step();factory.step();}
+  assert.equal(world.get(35,25),Mat.Quartz);
 });
 
 test('disconnected pipes retain separate liquids; a connected valve returns physical liquid', () => {

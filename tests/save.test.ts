@@ -30,7 +30,7 @@ function sample(): Saveable {
   factory.counters.pulp = 35; factory.counters.energy = 160; factory.counters.stored = 8;
   factory.nextId += 7;
   world.tick = 117; world.rng(); world.rng();
-  world.reactionCounts = { pulp: 104, crystal: 7, glass: 4 };
+  world.reactionCounts = { pulp: 104, crystal: 7, glass: 4,wet:9,calcined:3 };
   factory.pipes.rebuild(factory.machines);
   player.x = 56.25; player.y = 63.5; player.vx = 36; player.vy = -23.75;
   player.fuel = 72.5; player.facing = -1; player.thrust = true;
@@ -44,7 +44,7 @@ function sample(): Saveable {
 test('save roundtrip retains particles, heat, fall, RNG, reaction counters and sleeping chunks', () => {
   const original = sample(); original.world.active[0] = 0;
   const restored = deserialize(serialize(original));
-  for (const field of ['cells', 'temperature', 'fall', 'active', 'blocked'] as const)
+  for (const field of ['cells', 'temperature', 'fall', 'active', 'blocked','consolidated','passage','velocityX','velocityY'] as const)
     assert.deepEqual(restored.world[field], original.world[field], field);
   assert.equal(restored.world.seed, original.world.seed);
   assert.equal(restored.world.tick, original.world.tick);
@@ -91,6 +91,7 @@ test('a restored operating factory continues deterministically for 90 fixed tick
 
 test('early v1 saves without optional movement and activity fields remain loadable', () => {
   const data = JSON.parse(serialize(sample()));
+  data.version=1;data.inventory.length=17;
   delete data.world.active; delete data.world.reactionCounts; delete data.nextId; delete data.preferences;
   for (const key of ['vx', 'vy', 'facing', 'thrust', 'grounded']) delete data.player[key];
   const restored = deserialize(JSON.stringify(data));

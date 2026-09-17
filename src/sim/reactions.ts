@@ -3,6 +3,9 @@ import { Mat } from './materials';
 /** Balance knobs live here, shared by contact physics, machines and tests. */
 export const REACTIONS = {
   pulp: { inputs: [Mat.Sand, Mat.Water], outputs: [Mat.Pulp, Mat.Pulp] },
+  wetting: { input: Mat.Sand, water: Mat.Water, output: Mat.WetSand },
+  sieve: { goldChance: .25, every: 5, residueEvery: 6 },
+  calcining: { temperature: 420 },
   boiling: { material: Mat.Water, temperature: 100, output: Mat.Steam },
   condensation: { material: Mat.Steam, temperature: 76, coldSurface: 12, output: Mat.Water },
   ceramic: { input: Mat.Clay, output: Mat.Pellet, temperature: 680 },
@@ -21,7 +24,7 @@ export const REACTIONS = {
 } as const;
 
 export const CONTACT_REACTIONS = [
-  { first: Mat.Sand, second: Mat.Water, firstOutput: Mat.Pulp, secondOutput: Mat.Pulp },
+  { first: Mat.Sand, second: Mat.Water, firstOutput: Mat.WetSand, secondOutput: Mat.Air },
   { first: Mat.Molten, second: Mat.Mist, firstOutput: Mat.Crystal, secondOutput: Mat.Water,
     probability: REACTIONS.quench.crystalChance, alternate: Mat.Glass },
 ] as const;

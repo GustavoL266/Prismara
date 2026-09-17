@@ -15,3 +15,4 @@ playwright-report/
 *.bak
 .vscode/
 .idea/
+.upstream/
