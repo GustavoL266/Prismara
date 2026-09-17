@@ -29,6 +29,8 @@ export class World {
   readonly chunksY: number;
   readonly active: Uint8Array;
   readonly dirty: Uint8Array;
+  readonly visualVariant: Uint8Array;
+  readonly backdrop: Uint8Array;
   private readonly scanning: Uint8Array;
   private readonly visited: Uint32Array;
 
@@ -47,6 +49,8 @@ export class World {
     this.velocityX = new Int8Array(size);
     this.velocityY = new Int8Array(size);
     this.visited = new Uint32Array(size);
+    this.visualVariant = new Uint8Array(size);
+    this.backdrop = new Uint8Array(size);
     this.chunksX = Math.ceil(width / CHUNK_SIZE);
     this.chunksY = Math.ceil(height / CHUNK_SIZE);
     this.active = new Uint8Array(this.chunksX * this.chunksY);
@@ -83,6 +87,8 @@ export class World {
   set(x: number, y: number, mat: Mat, temperature = materials[mat].temperature): boolean {
     if (!this.inBounds(x, y)) return false;
     const i = this.index(x, y);
+    if (this.cells[i] === Mat.Air && mat !== Mat.Air) this.visualVariant[i] = this.variantAt(i);
+    if (mat === Mat.Air) this.visualVariant[i] = 0;
     this.cells[i] = mat;
     this.temperature[i] = temperature;
     this.fall[i] = 0;
@@ -94,6 +100,7 @@ export class World {
 
   clear(): void {
     this.cells.fill(Mat.Air);
+    this.visualVariant.fill(0); this.backdrop.fill(0);
     this.temperature.fill(DEFAULT_TEMPERATURE);
     this.fall.fill(0);
     this.blocked.fill(0);
@@ -115,7 +122,18 @@ export class World {
         this.active[yy * this.chunksX + xx] = 1;
       }
     }
-    if (cx >= 0 && cy >= 0 && cx < this.chunksX && cy < this.chunksY) this.dirty[cy * this.chunksX + cx] = 1;
+    this.markVisualDirty(x,y);
+  }
+  /** Presentation changes do not wake physics. */
+  markVisualDirty(x:number,y:number):void {
+    // Borders are a visual dependency even when the adjacent chunk is asleep.
+    for (let yy=Math.max(0,Math.floor((y-1)/CHUNK_SIZE));yy<=Math.min(this.chunksY-1,Math.floor((y+1)/CHUNK_SIZE));yy++)
+      for (let xx=Math.max(0,Math.floor((x-1)/CHUNK_SIZE));xx<=Math.min(this.chunksX-1,Math.floor((x+1)/CHUNK_SIZE));xx++) this.dirty[yy*this.chunksX+xx]=1;
+  }
+
+  variantAt(i: number): number {
+    let v = (Math.imul(i+1, 747796405) ^ this.seed ^ Math.imul(this.tick+1,2891336453)) >>> 0;
+    v = Math.imul(v ^ v >>> 16, 2246822507); return (v ^ v >>> 13) & 255;
   }
 
   rebuildActivity(): void {
@@ -128,6 +146,7 @@ export class World {
     const m = this.cells[i], t = this.temperature[i], f = this.fall[i];
     this.cells[i] = this.cells[j]; this.temperature[i] = this.temperature[j]; this.fall[i] = this.fall[j];
     this.cells[j] = m; this.temperature[j] = t; this.fall[j] = f;
+    const variant=this.visualVariant[i];this.visualVariant[i]=this.visualVariant[j];this.visualVariant[j]=variant;
     const vx=this.velocityX[i],vy=this.velocityY[i];
     this.velocityX[i]=this.velocityX[j];this.velocityY[i]=this.velocityY[j];
     this.velocityX[j]=vx;this.velocityY[j]=vy;
@@ -163,6 +182,7 @@ export class World {
 
   private replace(i: number, mat: Mat, temperature?: number): void {
     this.cells[i] = mat;
+    if (mat===Mat.Air) this.visualVariant[i]=0;
     if (temperature !== undefined) this.temperature[i] = temperature;
     this.fall[i] = 0;
     this.consolidated[i]=0;this.velocityX[i]=0;this.velocityY[i]=0;
@@ -246,6 +266,7 @@ export class World {
       this.active[Math.floor(y / CHUNK_SIZE) * this.chunksX + Math.floor(x / CHUNK_SIZE)] = 1;
       if ((this.tick + i) % REACTIONS.physics.ambientCoolingPeriod === 0) {
         this.temperature[i] += temperature < ambient ? 1 : -1;
+        this.markVisualDirty(x,y);
       }
     }
     return false;

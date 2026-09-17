@@ -1,7 +1,7 @@
 import { Mat, materials } from './materials';
 import { World } from './world';
+import { geologicalNoise } from './geology';
 export const WORLD_WIDTH=1024,WORLD_HEIGHT=1536;
-export const START_POSITION={x:130,y:154};
 export const SURFACE_LEVEL=172;
 export const REGION_NAMES=['Planície Âmbar','Galerias do Sedimento','Aquíferos de Ardósia','Estratos de Geada','Fendas Incandescentes','Arquivo das Profundezas'];
 export function surfaceLevel(w:World){return Math.min(SURFACE_LEVEL,Math.floor(w.height*.32));}
@@ -21,24 +21,29 @@ export const REGIONS=REGION_NAMES.map((name,id)=>({id,name}));
 /** Deposits are consolidated; connected corridors scale with world dimensions. */
 export function generateTerrain(w:World):void {
   w.clear();const top=surfaceLevel(w),remaining=w.height-top,phase=w.rng()*6.28;
+  const spawn=spawnPoint(w);
   for(let x=0;x<w.width;x++) {
     let surface=Math.round(top+Math.sin(x*.026+phase)*6+Math.sin(x*.061)*3);
-    if(x>60&&x<320)surface=top;
+    if(x>spawn.x-70&&x<spawn.x+190)surface=top;
     for(let y=surface;y<w.height;y++) {
       const depth=(y-top)/remaining;
-      const cave=y>top+55 && Math.sin(x*.028+phase)+Math.sin(y*.049)+Math.sin((x-y)*.024)>1.2;
-      const strata=Math.sin(y*.026+Math.sin(x*.012)*2);
+      const large=geologicalNoise(x,y,92,w.seed),small=geologicalNoise(x,y,29,w.seed+83);
+      const warp=(large-.5)*48;
+      const band=geologicalNoise(x+warp,y*.72,47,w.seed+127);
+      const cave=y>top+55 && (large*.62+small*.38>.64 || (Math.abs(band-.5)<.047 && small>.46));
+      const strata=geologicalNoise(x,y*.58,58,w.seed+43);
       let mat=depth<.04?Mat.Sand:depth<.23?Mat.Earth:Mat.Rock;
       if(cave)mat=Mat.Air;
       else if(depth>.04) {
-        const vein=Math.sin(x*.073+y*.023+phase)*Math.sin(y*.071-x*.013);
-        if(vein>.84)mat=Mat.Quartz;
-        if(depth>.46&&depth<.66&&strata>.28)mat=Mat.Ice;
-        if(depth>.24&&Math.sin(x*.047+y*.031+phase)>.998)mat=Mat.Crystal;
-        if(depth>.66&&depth<.84&&strata>.7)mat=Mat.Residue;
+        const vein=geologicalNoise(x+warp,y*1.2,41,w.seed+211);
+        if(Math.abs(vein-.5)<.025+small*.018 && large>.54)mat=Mat.Quartz;
+        if(depth>.46&&depth<.66&&strata>.54)mat=Mat.Ice;
+        if(depth>.24&&Math.abs(vein-.68)<.012&&small>.68)mat=Mat.Crystal;
+        if(depth>.66&&depth<.84&&strata>.63)mat=Mat.Residue;
       }
       if(x<2||x>=w.width-2||y>=w.height-3)mat=Mat.Rock;
       const i=w.index(x,y);w.cells[i]=mat;
+      w.backdrop[i]=regionAt(w,x,y)+1;w.visualVariant[i]=mat===Mat.Air?0:w.variantAt(i);
       if(mat!==Mat.Air)w.consolidated[i]=1;
       w.temperature[i]=materials[mat].temperature;
     }
@@ -59,7 +64,7 @@ export function generateTerrain(w:World):void {
     if(c.id==='feed')for(let x=c.x-5;x<=c.x+5;x++)w.set(x,c.y-4,Mat.Wall);
     for(let n=0;n<12;n++){const x=c.x+15+n%6,y=c.y-1-Math.floor(n/6);w.set(x,y,Mat.Crystal);w.consolidated[w.index(x,y)]=1;}
   }
-  const spawn=spawnPoint(w),left=spawn.x+64,right=left+28;
+  const left=spawn.x+64,right=left+28;
   if(right<w.width-3)for(let y=top-16;y<=top+6;y++)for(let x=left;x<=right;x++)w.set(x,y,y===top+6||x===left||x===right?Mat.Earth:y>top-11?Mat.Water:Mat.Air);
   if(w.height>600)for(const pocket of [{x:Math.floor(w.width*.2),y:top+Math.floor(remaining*.28),mat:Mat.Water},{x:Math.floor(w.width*.75),y:top+Math.floor(remaining*.75),mat:Mat.Steam}]){
     for(let y=pocket.y-18;y<=pocket.y+8;y++)for(let x=pocket.x-22;x<=pocket.x+22;x++)w.set(x,y,y===pocket.y+8||y===pocket.y-18||x===pocket.x-22||x===pocket.x+22?Mat.Rock:pocket.mat,pocket.mat===Mat.Steam?180:24);

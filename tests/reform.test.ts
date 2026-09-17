@@ -12,6 +12,7 @@ import {generateTerrain,spawnPoint,chambers} from '../src/sim/terrain';
 import {installLine} from './fixtures/line';
 import {installAdvancedLine} from './fixtures/advanced';
 import {Game} from '../src/game/game';
+import {Exploration} from '../src/game/exploration';
 const advance=(w:World,f:Factory,n:number)=>{for(let i=0;i<n;i++){f.step();w.step();}};
 
 test('sieve reserves its lower outlet and leaves residual material on the grille',()=>{
@@ -144,7 +145,7 @@ test('automatic rising signals leave an occupied gate open until its aperture cl
 test('the ancient mechanism accepts twelve supported pellets without requiring shard cleanup',()=>{
   const world=new World(1024,1536,7),factory=new Factory(world),c=chambers(world).find(c=>c.id==='feed')!;
   for(let x=c.x-5;x<=c.x+5;x++){world.set(x,c.y-4,Mat.Wall);world.set(x,c.y-5,Mat.Pellet);}world.set(c.x,c.y-6,Mat.Pellet);
-  const g=Object.create(Game.prototype) as Game;Object.assign(g,{world,factory,player:Object.assign(new Player(),{x:c.x,y:c.y-10}),progress:{mined:0,mixed:0,crystalsMade:0,tier:1,ruins:false,won:false,elapsed:0,mission:0,researched:[],discovered:[5],solved:[],visited:['feed'],chamberFeed:0},audio:{play:()=>{}},toast:()=>{}});
+  const g=Object.create(Game.prototype) as Game;Object.assign(g,{world,factory,exploration:new Exploration(world),player:Object.assign(new Player(),{x:c.x,y:c.y-10}),progress:{mined:0,mixed:0,crystalsMade:0,tier:1,ruins:false,won:false,elapsed:0,mission:0,researched:[],discovered:[5],solved:[],visited:['feed'],chamberFeed:0},audio:{play:()=>{}},toast:()=>{}});
   g.updateProgress();assert.equal(g.progress.chamberFeed,12);assert.deepEqual(g.progress.solved,['feed']);assert.equal(world.count(Mat.Shard),12);factory.counters.mined=24;assert.equal(g.context().mined,24);
 });
 for(const seed of [1,7,91207])test('deep world has traversable connecting galleries and safe initial basin, seed '+seed,()=>{

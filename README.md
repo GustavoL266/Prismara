@@ -55,7 +55,7 @@ A interface e o despachante de teclado usam o mesmo catálogo em [src/game/input
 | U | Melhorias |
 | I | Inventário |
 | H | Ajuda |
-| M | Mapa ampliado |
+| M | Mapa geral (arraste e roda no painel) |
 | N | Recolher minimapa |
 | R | Girar ou inverter peça |
 | Q | Material ou peça anterior |
@@ -128,15 +128,21 @@ Nenhum ramo básico exige cristais. A fonte inicial de ouro está disponível se
 
 Novas partidas usam **1024 × 1536 células**, com uma galeria sinuosa conectando seis regiões: Planície Âmbar, Galerias do Sedimento, Aquíferos de Ardósia, Estratos de Geada, Fendas Incandescentes e Arquivo das Profundezas. Depósitos aparecem em veios e bolsões. Nomes de região aparecem na descoberta.
 
+O personagem registra permanentemente um **disco de 80 células** ao se mover. O desconhecido fica preto opaco na cena e nos mapas. Zoom, câmera e resolução não aumentam a descoberta. O minimapa acompanha o entorno; **M** abre o mapa geral, navegável por arraste e roda. O mapa guarda a última matéria observada: alterações distantes aparecem ao retornar.
+
+A luz do capacete tem alcance de 65 células na superfície e 45 nas profundezas, com atenuação ao atravessar terreno. **Cartografia dos Estratos** desbloqueia a **Luminária de Galeria**: custa 3 areia, consome 0,002 E por passo, revela 38 células e ilumina 42. Desligar ou remover elimina a luz e conserva a descoberta. Emissão de cristais conhecidos e vidro quente ilumina uma área pequena; não descobre o mapa. O [contrato de exploração](docs/EXPLORACAO.md) explica as três camadas.
+
 Três arquivos contêm desafios distribuídos: drenar uma câmara, derreter uma barreira e conduzir 12 pelotas a um mecanismo. Descubra seis regiões, resolva os três arquivos e pesquise Cartografia para conectar a rede no painel de pesquisa. A conclusão permite continuar explorando e expandindo a fábrica.
 
 ## Salvamento e compatibilidade
 
-Formato **v2**, com materiais antigos mantendo os IDs 0–16 e novos IDs acrescentados a partir de 17. A migração lê partidas v1, preserva materiais, máquinas, líquidos dos tubos, energia e inventário, e converte níveis antigos em pesquisas compatíveis. Mundos antigos conservam suas dimensões para preservar construções e partículas; novos mundos usam a geração profunda.
+Formato **v3**, com materiais antigos mantendo os IDs 0–16 e novos IDs acrescentados a partir de 17. A migração lê partidas **v1 e v2**, preserva materiais, máquinas, líquidos dos tubos, energia e inventário, e converte níveis antigos em pesquisas compatíveis. Mundos antigos conservam suas dimensões para preservar construções e partículas; novos mundos usam a geração profunda. Como saves antigos não registravam células exploradas, a migração revela o entorno atual e os footprints das construções. O caminho histórico não pode ser recuperado.
 
 O salvamento usa **IndexedDB assíncrono**, com leitura de `prismara.world.v1` no localStorage para migração. Preserva células, consolidação dos depósitos, temperatura, queda, velocidades dos lançamentos, atividade dos chunks, estado aleatório, pesquisa, desafios, explorador, preferências, moedas e buffers de cada tubo. Não avança a simulação ao carregar. Filas de despejo são canceladas; material ainda na mochila permanece nela.
 
-Autosave a cada 25 segundos de simulação, ao ocultar a aba e ao sair. Fechar o processo imediatamente pode interromper uma gravação assíncrona; use **Salvar** ou exporte antes. Exportação/importação usa arquivos `.prismara` com validação de limites, IDs, sobreposições e dependências. O armazenamento pertence ao navegador e ao endereço da instalação.
+Também preserva máscara de descoberta, matéria cartográfica lembrada, pontos de interesse, posição/zoom do mapa, variantes visuais dos grãos e parede de fundo subterrânea. Variantes acompanham os grãos em trocas e conversões sem consumir o estado aleatório da física.
+
+Salvamento automático a cada 25 segundos de simulação, ao ocultar a aba e ao sair. Fechar o processo imediatamente pode interromper uma gravação assíncrona; use **Salvar** ou exporte antes. Exportação/importação usa arquivos `.prismara` com validação de limites, IDs, sobreposições, dependências e cartografia. O armazenamento pertence ao navegador e ao endereço da instalação.
 
 ## Arquitetura e desempenho
 

@@ -9,6 +9,7 @@ import { AudioSystem } from './audio';
 import { deserialize, serialize, serializeAsync, readSave, writeSave, type Progress, type Preferences } from './save';
 import { MISSIONS, RESEARCH, type MissionContext } from './progression';
 import { UI } from '../ui/ui';
+import { Exploration, LAMP_DISCOVERY_RADIUS } from './exploration';
 
 export type Tool='dig'|'collect'|'pour'|'build'|'select'|'thermal';
 export type Panel='start'|'build'|'research'|'upgrades'|'help'|'inventory'|'pause'|'new'|'won'|null;
@@ -19,6 +20,7 @@ export interface Blueprint {sourceId?:number;kind:MachineKind;dx:number;dy:numbe
 const initialProgress=():Progress=>({mined:0,mixed:0,crystalsMade:0,tier:1,ruins:false,won:false,elapsed:0,mission:0,researched:[],discovered:[0],solved:[],visited:[],chamberFeed:0});
 export class Game {
   world=new World();factory=new Factory(this.world);player=new Player();
+  exploration=new Exploration(this.world);
   inventory=Array(materials.length).fill(0) as number[];
   progress:Progress=initialProgress();
   preferences:Preferences={volume:.18,shake:false,zoom:3,uiScale:1};
@@ -37,6 +39,7 @@ export class Game {
     this.input.onZoom=amount=>{this.renderer.camera.zoom=Math.max(2,Math.min(6,Math.round((this.renderer.camera.zoom+amount)*1)));this.preferences.zoom=this.renderer.camera.zoom;};
     this.input.onPan=(x,y)=>{this.renderer.follow=false;this.renderer.camera.x-=x/this.renderer.camera.zoom;this.renderer.camera.y-=y/this.renderer.camera.zoom;};
     generateTerrain(this.world);Object.assign(this.player,spawnPoint(this.world));
+    this.exploration.update(this.player.x,this.player.y,[],true);
     readSave().then(raw=>{this.hasSave=!!raw;if(this.panel==='start')this.ui.showPanel();}).catch(()=>this.saveLabel='Armazenamento indisponível');
     this.ui.showPanel();this.ui.update();
     document.addEventListener('visibilitychange',()=>{if(document.hidden&&this.started){void this.save(false);this.input.release();this.last=0;}});
@@ -53,6 +56,7 @@ export class Game {
   newWorld(seed=(Date.now()%1000000)+1){
     this.world=new World(WORLD_WIDTH,WORLD_HEIGHT,seed);generateTerrain(this.world);
     this.factory=new Factory(this.world);this.player=new Player();Object.assign(this.player,spawnPoint(this.world));
+    this.exploration=new Exploration(this.world);this.exploration.update(this.player.x,this.player.y,[],true);
     this.inventory=Array(materials.length).fill(0);this.inventory[Mat.Sand]=48;
     this.progress=initialProgress();this.feeds=[];this.mining.clear();this.lastAutosave=0;this.selectedId=0;this.tool='dig';this.material=Mat.Sand;
     this.selection.clear();this.area=undefined;this.clipboard=[];this.pasteGroup=false;
@@ -113,7 +117,8 @@ export class Game {
     const dt=this.last?Math.min(.1,(now-this.last)/1000):1/60;this.last=now;this.fps+=(1/dt-this.fps)*.03;this.time+=dt;
     if(!this.paused){this.accumulator+=dt;let steps=0;while(this.accumulator>=1/SIMULATION_HZ&&steps<3){this.step();this.accumulator-=1/SIMULATION_HZ;steps++;}}else this.accumulator=0;
     const start=performance.now(),pointer=this.renderer.worldPoint(this.input.mouseX,this.input.mouseY);
-    this.renderer.render({world:this.world,factory:this.factory,player:this.player,time:this.time,pointer,tool:this.started&&this.panel===null?this.tool:'none',building:this.building,rotation:this.rotation,selectedId:this.selectedId,paused:this.paused,shake:this.preferences.shake,won:this.progress.won,area:this.area,selection:this.selection,blueprint:this.pasteGroup?this.clipboard:[],dragging:this.input.left||this.input.right},dt);
+    if(!this.exploration.matches(this.world)){this.exploration=new Exploration(this.world);this.exploration.update(this.player.x,this.player.y,[],true);}
+    this.renderer.render({world:this.world,exploration:this.exploration,factory:this.factory,player:this.player,time:this.time,pointer,tool:this.started&&this.panel===null&&this.input.overWorld?this.tool:'none',building:this.building,rotation:this.rotation,selectedId:this.selectedId,paused:this.paused,shake:this.preferences.shake,won:this.progress.won,area:this.area,selection:this.selection,blueprint:this.pasteGroup?this.clipboard:[],dragging:this.input.left||this.input.right},dt);
     this.renderMs+=(performance.now()-start-this.renderMs)*.08;
     if(this.time-this.lastUI>.15){this.ui.update();this.lastUI=this.time;}
     if(this.started&&!this.paused&&this.progress.elapsed-this.lastAutosave>25){void this.save(false);this.lastAutosave=this.progress.elapsed;}
@@ -125,6 +130,8 @@ export class Game {
     this.player.propulsion=Number(this.hasResearch('exploration'))+Number(this.hasResearch('propulsion'))*2;
     this.player.update(this.world,this.input.keys,1/SIMULATION_HZ);this.interact();this.feedStep();
     const impacts=this.factory.counters.impacts;this.factory.step();this.world.step();
+    if(!this.exploration.matches(this.world))this.exploration=new Exploration(this.world);
+    this.exploration.update(this.player.x,this.player.y,this.factory.machines.filter(m=>m.kind==='lamp'&&m.enabled&&m.signal&&m.status==='Ativa').map(m=>({id:m.id,x:m.x+3,y:m.y+3,radius:LAMP_DISCOVERY_RADIUS})));
     if(this.factory.counters.impacts>impacts)this.audio.play('impact');
     if(this.world.tick%15===0)this.updateProgress();
     const elapsed=performance.now()-start;this.simulationMs+=(elapsed-this.simulationMs)*.08;this.maxSimulationMs=Math.max(this.maxSimulationMs,elapsed);
@@ -135,7 +142,7 @@ export class Game {
     const region=regionAt(this.world,this.player.x,this.player.y);
     if(!this.progress.discovered!.includes(region)){this.progress.discovered!.push(region);this.toast(REGION_NAMES[region]+' descoberta.');this.audio.play('research');}
     for(const c of chambers(this.world)){
-      if(Math.hypot(this.player.x-c.x,this.player.y-c.y)<80&&!this.progress.visited!.includes(c.id)){this.progress.visited!.push(c.id);this.toast(c.name+' encontrado. '+({drain:'Drene a sala para revelar o arquivo.',thaw:'Derreta a barreira de gelo.',feed:'Faça 12 pelotas chegarem à plataforma central.'} as Record<string,string>)[c.id]);}
+      if(this.exploration.points.includes(c.id)&&!this.progress.visited!.includes(c.id)){this.progress.visited!.push(c.id);this.toast(c.name+' encontrado. '+({drain:'Drene a sala para revelar o arquivo.',thaw:'Derreta a barreira de gelo.',feed:'Faça 12 pelotas chegarem à plataforma central.'} as Record<string,string>)[c.id]);}
       if(this.progress.solved!.includes(c.id)||!this.progress.visited!.includes(c.id))continue;
       let water=0,ice=0;
       for(let y=c.y-42;y<c.y;y++)for(let x=c.x-35;x<c.x+36;x++){
@@ -151,18 +158,20 @@ export class Game {
     if(advanced){this.audio.play('research');this.toast(this.progress.mission<MISSIONS.length?'Próximo objetivo: '+MISSIONS[this.progress.mission].title:'Arquivos conectados. Continue expandindo sua fábrica.');}
   }
   context():MissionContext{return {mined:this.progress.mined+(this.factory.counters.mined??0),wet:this.progress.mixed,gold:this.factory.counters.collectedGold??0,stored:this.factory.counters.stored,machines:this.factory.machines.length,research:this.progress.researched!.length,discovered:this.progress.discovered!.length,challenges:this.progress.solved!.length,won:this.progress.won};}
-  selectedMachine(){return this.factory.machines.find(m=>m.id===this.selectedId);}
-  machineAt(x:number,y:number){return [...this.factory.machines].reverse().find(m=>x>=m.x&&x<m.x+m.w&&y>=m.y&&y<m.y+m.h);}
+  selectedMachine(){return this.factory.machines.find(m=>m.id===this.selectedId&&this.exploration.knows(m.x,m.y));}
+  machineAt(x:number,y:number){if(!this.exploration.knows(x,y))return undefined;return [...this.factory.machines].reverse().find(m=>x>=m.x&&x<m.x+m.w&&y>=m.y&&y<m.y+m.h);}
   private finishArea(){
     if(!this.area)return;
     const a=this.area,minX=Math.min(a.x,a.endX),maxX=Math.max(a.x,a.endX),minY=Math.min(a.y,a.endY),maxY=Math.max(a.y,a.endY);
-    const ids=this.factory.machines.filter(m=>m.x<maxX+1&&m.x+m.w>minX&&m.y<maxY+1&&m.y+m.h>minY).map(m=>m.id);
+    const ids=this.factory.machines.filter(m=>this.exploration.knows(m.x,m.y)&&m.x<maxX+1&&m.x+m.w>minX&&m.y<maxY+1&&m.y+m.h>minY).map(m=>m.id);
     if(a.remove)for(const id of ids)this.removeMachine(id);else{this.selection=new Set(ids);this.selectedId=ids[0]??0;this.toast(ids.length+' peças selecionadas. [C] copia; [V] constrói a cópia.');}
     this.area=undefined;this.ui.update(true);
   }
   private interact(){
     const {left,right}=this.input,point=this.renderer.worldPoint(this.input.mouseX,this.input.mouseY);
     if(!left&&!right){this.finishArea();this.usedClick=false;this.lastBuild=undefined;return;}
+    if(!this.input.overWorld&&!this.area){this.lastBuild=undefined;return;}
+    if(!this.exploration.knows(point.x,point.y)){this.usedClick=true;return;}
     if(this.area){this.area.endX=point.x;this.area.endY=point.y;return;}
     if((right&&this.input.keys.has('ShiftLeft'))||(left&&this.tool==='select')){
       this.area={x:point.x,y:point.y,endX:point.x,endY:point.y,remove:right};return;
@@ -213,6 +222,7 @@ export class Game {
   }
   place(kind:MachineKind,x:number,y:number,rotation=0,notify=true){
     const d=MACHINE_DEFS[kind],size=machineSize(kind,rotation);
+    if(!this.exploration.footprint(x,y,size.w,size.h)){if(notify)this.toast('Explore toda a área antes de construir.');return null;}
     if(!this.unlocked(kind)){if(notify)this.toast('Pesquisa necessária.');return null;}
     if(this.inventory[Mat.Sand]<d.cost){if(notify)this.toast('Faltam '+(d.cost-this.inventory[Mat.Sand])+' grãos de areia.');return null;}
     const p=this.player;

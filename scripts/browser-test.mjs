@@ -5,6 +5,7 @@ import {spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {cpus,totalmem,platform,release} from 'node:os';
 import {chromium} from '@playwright/test';
+import {validateExploration} from './browser-exploration.mjs';
 
 const origin=process.env.PRISMARA_TEST_URL??'http://127.0.0.1:5173',artifacts=resolve('.local/browser');
 const chrome=process.env.CHROME_PATH??(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':undefined);
@@ -82,6 +83,9 @@ try{
   const goldBefore=await page.evaluate(()=>__prismara.factory.gold);await page.locator('[data-research="liquids"]').click();
   assert.equal(await page.evaluate(()=>__prismara.factory.gold),goldBefore-6);await page.keyboard.press('Escape');
   pass('Normal gold-funded research unlocks an independent liquids branch');
+  // Explore the group placement footprint using movement before building there.
+  await page.keyboard.down('d');await page.keyboard.down('Space');await delay(1500);await page.keyboard.up('d');await page.keyboard.up('Space');
+  await page.keyboard.down('a');await delay(1500);await page.keyboard.up('a');await delay(1800);
   await delay(1400);const sandBeforeCopy=(await inventory())[1];await page.keyboard.press('5');await dragArea(164,126,188,160);
   assert.equal(await page.evaluate(()=>__prismara.selection.size),2);await page.keyboard.press('c');await page.keyboard.press('v');await hold(250,108,100);
   assert.ok(await page.evaluate(()=>__prismara.factory.machines.some(m=>m.kind==='sieve'&&m.x===250&&m.y===108)));assert.equal((await inventory())[1],sandBeforeCopy-10);
@@ -114,16 +118,18 @@ try{
   await page.locator('#ui-scale').focus();await page.keyboard.press('End');await page.keyboard.press('Escape');await delay(200);await page.keyboard.press('1');await hold(175,150,80);pass('Maximum UI scale with contextual inspector stays in view',await assertHUD());
   // Independent automation rig on a full-size world. Installed once; raw materials only.
   await page.evaluate(async()=>{
-    const [{World},{Factory},{installLine}]=await Promise.all([import('/src/sim/world.ts'),import('/src/sim/machines.ts'),import('/tests/fixtures/line.ts')]);
+    const [{World},{Factory},{installLine},{Exploration}]=await Promise.all([import('/src/sim/world.ts'),import('/src/sim/machines.ts'),import('/tests/fixtures/line.ts'),import('/src/game/exploration.ts')]);
     const g=__prismara;g.world=new World(1024,1536,91207);g.factory=new Factory(g.world);installLine(g.world,g.factory);
     g.inventory.fill(0);g.progress.elapsed=0;g.progress.researched=['processing','transport','liquids','heat','automation'];g.progress.discovered=[0];g.progress.solved=[];g.progress.visited=[];g.progress.chamberFeed=0;g.progress.mission=0;
-    g.player.x=160;g.player.y=189;g.renderer.follow=false;g.renderer.camera.x=200;g.renderer.camera.y=125;g.renderer.camera.zoom=3;g.renderer.invalidate();g.preferences.uiScale=1;g.selectedId=0;g.selection.clear();g.input.release();g.setPanel(null);
+    g.factory.add('platform',68,115);g.factory.add('lamp',44,38);g.factory.add('lamp',150,80);
+    g.player.x=80;g.player.y=114;g.player.vx=0;g.player.vy=0;g.exploration=new Exploration(g.world);g.exploration.update(80,114,[],true);
+    g.renderer.follow=false;g.renderer.camera.x=110;g.renderer.camera.y=102;g.renderer.camera.zoom=3;g.renderer.invalidate();g.preferences.uiScale=1;g.selectedId=0;g.selection.clear();g.input.release();g.setPanel(null);
     window.__autonomousStart={tick:g.world.tick,wall:performance.now()};
   });
   const samples=[];
   for(let checkpoint=1;checkpoint<=6;checkpoint++){
     await page.waitForFunction(target=>__prismara.world.tick-__autonomousStart.tick>=target,checkpoint*900,{timeout:45000});
-    const sample=await page.evaluate(()=>({tick:__prismara.world.tick,gold:__prismara.factory.gold,mined:__prismara.factory.counters.mined,wet:__prismara.factory.counters.wet,fps:__prismara.fps,simMs:__prismara.simulationMs,renderMs:__prismara.renderMs}));samples.push(sample);
+    const sample=await page.evaluate(()=>({tick:__prismara.world.tick,gold:__prismara.factory.gold,mined:__prismara.factory.counters.mined,wet:__prismara.factory.counters.wet,fps:__prismara.fps,simMs:__prismara.simulationMs,renderMs:__prismara.renderMs,discoveryMs:__prismara.exploration.updateMs,lightingMs:__prismara.renderer.lighting.updateMs}));samples.push(sample);
     console.log('AUTONOMOUS '+checkpoint*30+' s: '+JSON.stringify(sample));
     if(checkpoint===2)await screenshot('06-linha-autonoma');
   }
@@ -133,10 +139,12 @@ try{
   assert.ok(duration.wallSeconds>=180);pass('At least three wall-clock minutes of unattended physical mining through collection',{duration,samples});
   report.autonomous={duration,samples};
   const advanced=await page.evaluate(async()=>{
-    const [{World},{Factory},{installAdvancedLine}]=await Promise.all([import('/src/sim/world.ts'),import('/src/sim/machines.ts'),import('/tests/fixtures/advanced.ts')]);
+    const [{World},{Factory},{installAdvancedLine},{Exploration}]=await Promise.all([import('/src/sim/world.ts'),import('/src/sim/machines.ts'),import('/tests/fixtures/advanced.ts'),import('/src/game/exploration.ts')]);
     const g=__prismara;g.setPanel('pause');g.world=new World(1024,1536,91207);g.factory=new Factory(g.world);installAdvancedLine(g.world,g.factory);
     for(let i=0;i<5400;i++){g.factory.step();g.world.step();}
-    g.progress.researched=['processing','transport','liquids','heat','glass','automation'];g.player.x=163;g.player.y=189;g.renderer.camera.x=195;g.renderer.camera.y=125;g.renderer.invalidate();g.setPanel(null);
+    g.factory.add('lamp',44,38);g.factory.add('lamp',150,80);g.factory.add('lamp',160,150);
+    g.progress.researched=['processing','transport','liquids','heat','glass','automation'];g.player.x=163;g.player.y=189;g.exploration=new Exploration(g.world);g.exploration.update(95,100,[],true);g.exploration.update(g.player.x,g.player.y);
+    g.renderer.camera.x=120;g.renderer.camera.y=116;g.renderer.invalidate();g.setPanel(null);
     return {counters:g.factory.counters,gold:g.factory.gold,crystals:g.factory.crystals};
   });
   assert.ok(advanced.crystals>=8&&advanced.counters.impacts>=30);await screenshot('07-industria-avancada');pass('Physical advanced factory with impact energy, ceramics, molten glass and rare collection',advanced);
@@ -150,6 +158,7 @@ try{
   }
   assert.ok((await position()).y>230,'connected gallery must be reachable by normal controls');
   await screenshot('04-exploracao');pass('Normal travel reaches a connected subterranean region',await position());
+  await validateExploration(page,screenshot,pass);
   assert.deepEqual(report.consoleErrors,[]);pass('No browser JavaScript or console errors');report.ok=true;
 }catch(error){
   report.ok=false;report.error=error.stack??String(error);console.error(error);process.exitCode=1;

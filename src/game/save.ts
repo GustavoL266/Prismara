@@ -4,12 +4,14 @@ import { Mat, materials } from '../sim/materials';
 import { acceptsFluid, isPipeMachine, PIPE_CAPACITY } from '../sim/pipes';
 import { Player } from './player';
 import { RESEARCH } from './progression';
+import { Exploration } from './exploration';
+import { regionAt, surfaceLevel, chambers } from '../sim/terrain';
 
 export const SAVE_KEY = 'prismara.world.v1';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 export interface Progress { mined: number; mixed: number; crystalsMade: number; tier: number; ruins: boolean; won: boolean; elapsed: number; mission: number; researched?:string[]; discovered?:number[]; solved?:string[]; chamberFeed?:number; visited?:string[] }
 export interface Preferences { volume: number; shake: boolean; zoom: number; uiScale?:number }
-export interface Saveable { world: World; factory: Factory; player: Player; inventory: number[]; progress: Progress; preferences: Preferences }
+export interface Saveable { world: World; factory: Factory; player: Player; inventory: number[]; progress: Progress; preferences: Preferences; exploration?:Exploration }
 
 function rle(data: ArrayLike<number>): number[] {
   const out: number[] = [];
@@ -46,11 +48,14 @@ function record(value: unknown): value is Record<string, any> {
 
 export function serialize(game: Saveable): string {
   const w = game.world, player = game.player;
+  const knowledge=game.exploration??new Exploration(w);
+  if(!game.exploration)knowledge.migrate(player.x,player.y,game.factory.machines);
   return JSON.stringify({
     version: SAVE_VERSION, savedAt: Date.now(),
     world: { width: w.width, height: w.height, seed: w.seed, tick: w.tick, rngState: w.rngState,
       cells: rle(w.cells), temperature: rle(w.temperature), fall: rle(w.fall), active: rle(w.active), reactionCounts: w.reactionCounts,
-      consolidated:rle(w.consolidated),velocityX:rle(w.velocityX),velocityY:rle(w.velocityY) },
+      consolidated:rle(w.consolidated),velocityX:rle(w.velocityX),velocityY:rle(w.velocityY),visualVariant:rle(w.visualVariant),backdrop:rle(w.backdrop) },
+    exploration:{width:w.width,height:w.height,discoveredCells:rle(knowledge.discoveredCells),rememberedMaterial:rle(knowledge.rememberedMaterial),points:knowledge.points,map:knowledge.map},
     machines: game.factory.machines, nextId: game.factory.nextId,
     energy: { value: game.factory.energy.value, capacity: game.factory.energy.capacity },
     counters: game.factory.counters,
@@ -63,7 +68,7 @@ export function serialize(game: Saveable): string {
 
 export function deserialize(raw: string): Saveable {
   const data: unknown = JSON.parse(raw);
-  if (!record(data) || ![1,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
+  if (!record(data) || ![1,2,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
   const legacy=data.version===1;
   const w = data.world;
   if (!record(w) || !integer(w.width, 32, 1024) || !integer(w.height, 32, 2048)) throw new Error('Dimensão inválida');
@@ -76,6 +81,11 @@ export function deserialize(raw: string): Saveable {
     world[key].set(unrle(w[key],length,min,max));
   }
   if(legacy)for(let i=0;i<length;i++)if(materials[world.cells[i]].state==='terrain')world.consolidated[i]=1;
+  if(data.version>=3){world.visualVariant.set(unrle(w.visualVariant,length,0,255));world.backdrop.set(unrle(w.backdrop,length,0,6));}
+  else for(let i=0;i<length;i++) {
+    world.visualVariant[i]=world.cells[i]===Mat.Air?0:world.variantAt(i);
+    const y=Math.floor(i/world.width);if(y>=surfaceLevel(world))world.backdrop[i]=regionAt(world,i%world.width,y)+1;
+  }
   world.tick = w.tick; world.rngState = w.rngState;
   world.rebuildActivity();
   // Early v1 files did not retain sleeping chunks. New files resume the identical scan order.
@@ -176,7 +186,18 @@ export function deserialize(raw: string): Saveable {
     if(world.consolidated[i]&&world.cells[i]===Mat.Air)throw new Error('Depósito sem material');
     if(world.blocked[i]&&world.cells[i]!==Mat.Air&&!world.accepts(i%world.width,Math.floor(i/world.width),world.cells[i]))throw new Error('Material sobreposto à estrutura');
   }
-  return { world, factory, player, inventory: Array.from({length:materials.length},(_,i)=>data.inventory[i]??0), progress: progressState, preferences };
+  const exploration=new Exploration(world);
+  if(data.version>=3){
+    const e=data.exploration;
+    if(!record(e)||e.width!==world.width||e.height!==world.height||!Array.isArray(e.points)||e.points.length>3||new Set(e.points).size!==e.points.length||!e.points.every((id:unknown)=>['drain','thaw','feed'].includes(id as string)))throw new Error('Cartografia inválida');
+    exploration.discoveredCells.set(unrle(e.discoveredCells,length,0,1));exploration.rememberedMaterial.set(unrle(e.rememberedMaterial,length,0,materials.length-1));
+    for(let i=0;i<length;i++)if(!exploration.discoveredCells[i]&&exploration.rememberedMaterial[i]!==Mat.Air)throw new Error('Material cartográfico sem descoberta');
+    exploration.points=[...e.points];
+    if(!record(e.map)||!finite(e.map.x,0,world.width)||!finite(e.map.y,0,world.height)||!finite(e.map.zoom,.5,8))throw new Error('Posição do mapa inválida');
+    exploration.map={x:e.map.x,y:e.map.y,zoom:e.map.zoom};
+    for(const c of chambers(world))if(exploration.points.includes(c.id)&&!exploration.knows(c.x,c.y-20))throw new Error('Marcador de câmara oculta');
+  }else exploration.migrate(player.x,player.y,machines);
+  return { world, factory, player, exploration, inventory: Array.from({length:materials.length},(_,i)=>data.inventory[i]??0), progress: progressState, preferences };
 }
 
 const DATABASE='prismara.saves';
@@ -196,7 +217,8 @@ export function serializeAsync(game:Saveable):Promise<string> {
   const w=game.world,id=++encodingId;
   return new Promise((resolve,reject)=>{
     pending.set(id,{resolve,reject});
-    encoder!.postMessage({id,game:{world:{width:w.width,height:w.height,seed:w.seed,tick:w.tick,rngState:w.rngState,cells:w.cells,temperature:w.temperature,fall:w.fall,active:w.active,reactionCounts:w.reactionCounts,consolidated:w.consolidated,velocityX:w.velocityX,velocityY:w.velocityY},
+    encoder!.postMessage({id,game:{world:{width:w.width,height:w.height,seed:w.seed,tick:w.tick,rngState:w.rngState,cells:w.cells,temperature:w.temperature,fall:w.fall,active:w.active,reactionCounts:w.reactionCounts,consolidated:w.consolidated,velocityX:w.velocityX,velocityY:w.velocityY,visualVariant:w.visualVariant,backdrop:w.backdrop},
+      exploration:game.exploration?{discoveredCells:game.exploration.discoveredCells,rememberedMaterial:game.exploration.rememberedMaterial,points:game.exploration.points,map:game.exploration.map}:undefined,
       factory:{machines:game.factory.machines,nextId:game.factory.nextId,energy:game.factory.energy,counters:game.factory.counters,gold:game.factory.gold,crystals:game.factory.crystals},
       player:game.player,inventory:game.inventory,progress:game.progress,preferences:game.preferences}});
   });

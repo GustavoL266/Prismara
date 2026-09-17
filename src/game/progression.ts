@@ -7,7 +7,7 @@ export const RESEARCH:Research[]=[
   {id:'heat',branch:'Energia e calor',name:'Ciclo da Cerâmica',gold:14,crystals:0,requires:['processing'],unlocks:'Forno · Prensa · Câmara de Calcinação'},
   {id:'glass',branch:'Processamento',name:'Têmpera de Facetas',gold:18,crystals:0,requires:['heat','liquids'],unlocks:'Cadinho · Névoa · Cofre'},
   {id:'automation',branch:'Automação',name:'Cadência Autônoma',gold:24,crystals:0,requires:['transport','heat'],unlocks:'Sonda Escavadora · Transportador · Sensor'},
-  {id:'exploration',branch:'Exploração',name:'Cartografia dos Estratos',gold:10,crystals:0,requires:['tools'],unlocks:'Propulsor +1 · Análise das câmaras'},
+  {id:'exploration',branch:'Exploração',name:'Cartografia dos Estratos',gold:10,crystals:0,requires:['tools'],unlocks:'Propulsor +1 · Luminária · Análise das câmaras'},
   {id:'thermal',branch:'Ferramentas',name:'Lança Térmica',gold:16,crystals:0,requires:['heat','tools'],unlocks:'Ferramenta térmica · Derreter gelo'},
   {id:'capacity',branch:'Ferramentas',name:'Mochila de Facetas',gold:10,crystals:3,requires:['glass','tools'],unlocks:'Mochila +600 · Alcance +25'},
   {id:'propulsion',branch:'Exploração',name:'Jato de Profundidade',gold:8,crystals:4,requires:['exploration','glass'],unlocks:'Propulsor +2 · Força +2'},

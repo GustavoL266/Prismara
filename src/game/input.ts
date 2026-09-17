@@ -13,7 +13,7 @@ export const CONTROLS=[
   {action:'upgrades',codes:['KeyU'],keys:'U',label:'Melhorias'},
   {action:'inventory',codes:['KeyI'],keys:'I',label:'Inventário'},
   {action:'help',codes:['KeyH'],keys:'H',label:'Ajuda'},
-  {action:'map',codes:['KeyM'],keys:'M',label:'Mapa ampliado'},
+  {action:'map',codes:['KeyM'],keys:'M',label:'Mapa geral (arraste e roda no painel)'},
   {action:'minimap',codes:['KeyN'],keys:'N',label:'Recolher minimapa'},
   {action:'rotate',codes:['KeyR'],keys:'R',label:'Girar ou inverter peça'},
   {action:'previous',codes:['KeyQ'],keys:'Q',label:'Material ou peça anterior'},
@@ -33,7 +33,7 @@ export const CONTROLS=[
 export const actionFor=(code:string)=>CONTROLS.find(c=>c.codes.includes(code))?.action;
 export const keysFor=(action:string)=>CONTROLS.find(c=>c.action===action)?.keys??'';
 export class Input {
-  keys = new Set<string>(); mouseX = 0; mouseY = 0; left = false; right = false; pan = false;
+  keys = new Set<string>(); mouseX = 0; mouseY = 0; left = false; right = false; pan = false; overWorld = false;
   onAction: (code: string) => void = () => {}; onZoom: (amount: number) => void = () => {}; onPan: (dx:number,dy:number) => void = () => {};
   constructor(canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', event => {
@@ -45,14 +45,17 @@ export class Input {
     window.addEventListener('keyup', e => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.release());
     canvas.addEventListener('pointermove', e => {
+      this.overWorld = document.elementFromPoint(e.clientX,e.clientY) === canvas;
       if (this.pan) this.onPan(e.clientX-this.mouseX,e.clientY-this.mouseY);
       this.mouseX=e.clientX; this.mouseY=e.clientY;
     });
     canvas.addEventListener('pointerdown', e => {
+      this.overWorld = true;
       this.mouseX=e.clientX; this.mouseY=e.clientY;
       if(e.button===0)this.left=true; if(e.button===2)this.right=true; if(e.button===1)this.pan=true;
       canvas.setPointerCapture(e.pointerId);
     });
+    canvas.addEventListener('pointerleave', () => { this.overWorld = false; });
     window.addEventListener('pointerup', () => {this.left=false;this.right=false;this.pan=false;});
     canvas.addEventListener('contextmenu',e=>e.preventDefault());
     canvas.addEventListener('wheel',e=>{ e.preventDefault();this.onZoom(-Math.sign(e.deltaY)); },{passive:false});

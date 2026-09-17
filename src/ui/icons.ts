@@ -1,4 +1,5 @@
 const paths:Record<string,string>={
+  lamp:'M5 3h14v6H5ZM8 5h8M11 9v10h2V9M7 21h10M3 12l3-2m15 2-3-2',
   gold:'M7 4h10l4 12-3 4H6l-3-4ZM7 4l-1 10h12L17 4M6 14l-3 2m15-2 3 2',
   sieve:'M2 8h20M4 8v10m16-10v10M6 10h12M8 10v3m4-3v3m4-3v3M12 16v6m-2-2 2 2 2-2',
   collector:'M4 5v16h16V5M7 17h10M9 4l3 4 3-4M12 8v5',
@@ -30,7 +31,7 @@ const paths:Record<string,string>={
   pump:'M7 6h10v12H7ZM3 9h4m10 6h4M12 8v7l-2-2m2 2 2-2',
   pipe:'M3 8h9V3h5v10H8v8H3Z',
   valve:'M3 8h10V4h5v13H8v4H3ZM14 19v3m5-3v3',
-  filter:'M3 4h18l-7 8v8l-4 2V12ZM6 7h12',
+  filter:'M2 8h20M4 8v10m16-10v10M6 11h12m-12 3h12M10 18v4m4-4v4M8 3h8v3H8Z',
   sensor:'M7 7h10v10H7ZM3 12h2m14 0h2M12 3v2m0 14v2M10 10h4v4h-4Z',
   fastbelt:'M4 9h16v8H4ZM7 11l3 2-3 2m7-4 3 2-3 2M6 20h12',
   research:'M9 3h6M10 3v6l-6 10 2 2h12l2-2-6-10V3M8 15h8',

@@ -5,7 +5,7 @@ import { PipeSystem, isPipeMachine, type FluidBuffer } from './pipes';
 import { updateSignals } from './signals';
 import { REACTIONS } from './reactions';
 
-export type MachineKind = 'belt' | 'lift' | 'filter' | 'separator' | 'kiln' | 'crucible' | 'mist' | 'press' | 'crusher' | 'pump' | 'pipe' | 'valve' | 'vault' | 'sensor' | 'fastbelt' | 'sieve' | 'collector' | 'block' | 'platform' | 'wall' | 'funnel' | 'gate' | 'launcher' | 'drill' | 'heater' | 'hauler';
+export type MachineKind = 'belt' | 'lift' | 'filter' | 'separator' | 'kiln' | 'crucible' | 'mist' | 'press' | 'crusher' | 'pump' | 'pipe' | 'valve' | 'vault' | 'sensor' | 'fastbelt' | 'sieve' | 'collector' | 'block' | 'platform' | 'wall' | 'funnel' | 'gate' | 'launcher' | 'drill' | 'heater' | 'hauler' | 'lamp';
 export interface MachineDef { name: string; w: number; h: number; tier: number; cost: number; description: string; input: string; output: string; color: string; rotation?: 'none'|'flip'|'quarter'; category?: string; research?: string }
 export const MACHINE_DEFS: Record<MachineKind, MachineDef> = {
   belt: { name: 'Esteira de Placas', w: 16, h: 3, tier: 1, cost: 2, description: 'Carrega a camada em contato. Pilhas congestionam. R inverte.', input: 'Grãos sobre a superfície', output: 'Lateral', color: '#899096', category:'Transporte' },
@@ -34,6 +34,7 @@ export const MACHINE_DEFS: Record<MachineKind, MachineDef> = {
   drill:{name:'Sonda Escavadora',w:12,h:8,tier:4,cost:12,research:'automation',description:'Rompe depósitos abaixo de si. 0,15 E por célula liberada; nada vai à mochila.',input:'Terreno abaixo',output:'Grãos no mundo',color:'#D69B32',rotation:'none',category:'Automação'},
   heater:{name:'Câmara de Calcinação',w:14,h:10,tier:3,cost:8,research:'heat',description:'Resíduo + 0,6 E → resíduo calcinado quente.',input:'Resíduo por cima',output:'Calcinado pela lateral',color:'#d88854',category:'Processamento'},
   hauler:{name:'Transportador de Arraste',w:24,h:3,tier:4,cost:8,research:'automation',description:'Correia automatizada para sólidos e areia úmida. Duplo avanço.',input:'Grãos na superfície',output:'Lateral',color:'#D69B32',category:'Automação'},
+  lamp:{name:'Luminária de Galeria',w:6,h:8,tier:2,cost:3,research:'exploration',description:'Ilumina a fábrica e registra um disco local de 38 células. Consome 0,002 E por passo.',input:'Energia',output:'Luz e descoberta local',color:'#F1BD4F',rotation:'none',category:'Exploração'},
 };
 for(const [kind,d] of Object.entries(MACHINE_DEFS)) {
   d.rotation??=['mist','valve'].includes(kind)?'quarter':['vault','sensor','pipe','pump'].includes(kind)?'none':'flip';
@@ -62,7 +63,7 @@ export function machineSolid(m:Machine,x:number,y:number):boolean {
 }
 export function machinePorts(m:Machine):{x:number;y:number;label:string}[] {
   const cx=m.x+Math.floor(m.w/2),side=m.rotation%2?m.x-1:m.x+m.w;
-  if(['block','wall','platform','gate','sensor','pipe'].includes(m.kind))return [];
+  if(['block','wall','platform','gate','sensor','pipe','lamp'].includes(m.kind))return [];
   const ports=[{...feedPoint(m),label:'Entrada'}];
   if(['sieve','separator','heater','kiln','press'].includes(m.kind))ports.push({x:side,y:m.kind==='sieve'?m.y-1:m.y+m.h-3,label:m.kind==='sieve'?'Resíduo':'Saída'});
   if(['sieve','separator','crucible','crusher','filter','collector'].includes(m.kind))ports.push({x:cx,y:m.y+m.h,label:m.kind==='sieve'?'Ouro':'Saída'});
@@ -238,6 +239,7 @@ export class Factory {
       if(m.kind==='gate'){m.status=m.enabled&&m.signal?'Fechada':'Aberta';continue;}
       if (!m.enabled || !m.signal) { m.status = 'Desligada'; continue; }
       if (isPipeMachine(m)) continue;
+      if (m.kind === 'lamp') { m.status=this.energy.spend(.002)?'Ativa':'Sem energia';continue; }
       if (m.kind === 'vault') { this.vault(m); continue; }
       if (m.kind === 'collector') { this.collector(m);continue; }
       if (['block','platform','wall','funnel'].includes(m.kind)){m.status='Estrutura';continue;}
