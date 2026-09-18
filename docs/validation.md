@@ -1,77 +1,101 @@
-# Validação de Prismara 0.2
+# Validação de Prismara 0.3
 
-Validação executada em 17 de setembro de 2026. Os cenários abaixo distinguem a partida nova por controles normais das instalações controladas para testar operação prolongada.
+Execução local em 2026-09-17T23:56:52.565Z. Os parâmetros de arte, descoberta e luz são escolhas do projeto; os resultados abaixo vêm da execução desta versão.
 
 ## Comandos e cobertura
 
-Todos passaram: `npm ci`, `npm test`, `npm run build` e `npm run test:browser`. São **70 testes** de simulação, além das verificações de navegador descritas abaixo. A instalação limpa encontrou zero vulnerabilidades; o build inclui o worker de salvamento.
+- npm ci: 98 pacotes, zero vulnerabilidades reportadas.
+- npm test: 89 testes aprovados. Os 70 testes anteriores foram preservados; 19 verificam descoberta, memória, iluminação, migração, variantes e fronteiras de chunks.
+- npm run build e npm run build -- --base=/Prismara/: TypeScript e builds de produção aprovados, incluindo worker assíncrono.
+- npm run test:browser: 23 verificações aprovadas, zero erros JavaScript ou de console. Chrome 152.0.7977.84.
+- npm run benchmark: 5.400 passos por cenário, em grades completas de 1024 × 1536.
 
-A cobertura inclui consumo de água, ouro e resíduo em saídas distintas, crédito único, obstrução sem perda, rotação compartilhada com a prévia, colisão de lançamentos, contenção e vazamento, construção/remoção/carregamento sem duplicação, dependências acíclicas e migração v1. Também testa redes desconectadas, retomada determinística, aquecimento do gelo, comportas ocupadas e o mecanismo subterrâneo alimentado por doze pelotas. Sementes 1, 7 e 91207 têm galerias conectadas aos três arquivos.
+Cobertura funcional: água finita consumida na mistura; ouro inferior e resíduo sobre a grelha; crédito único; saída bloqueada preservando entrada e energia; rotação/portas coerentes; lançamento percorrendo células intermediárias e colidindo; líquidos contidos e vazamento; construção/remoção sem sobrescrever grãos; save/load determinístico; pesquisas sem ciclos; migração v1/v2.
+
+Cobertura de exploração: disco inicial exato; movimento fracionário e rápido; teleporte sem corredor; zoom, câmera, tela e mapa sem descoberta adicional; memória ao sair/retornar; fontes locais e remoção; nome de bioma sem revelar toda a região; overlays e inspetor ocultos; desconhecido preto opaco; dados cartográficos e variantes no save; novos mundos sem conhecimento herdado; fábricas desconhecidas continuam produzindo. A galeria compara estados desligado, operando e obstruído.
+
+Verificação adicional de densidade de tela: contextos novos de Chrome com devicePixelRatio 1,5 e 2. Em ambos, viewport CSS 1280 × 720 e Canvas nativo 2560 × 1440. Construção de bloco pelo catálogo e mouse criou exatamente uma peça na célula apontada e cobrou uma areia. Câmera sobre área desconhecida retornou todos os pixels pretos com alpha 255, sem aumentar o conhecimento; zero erros JavaScript. Esse ensaio complementar fica fora da suíte principal de CI.
 
 ## Partida nova por controles normais
 
-Semente **91207**, mundo **1024 × 1536**. O roteiro inicia no menu e usa teclado, movimento, propulsor, mira, escavação, aspiração, despejo, catálogo e pesquisa. Nenhum material, moeda ou contador é atribuído artificialmente nessa etapa. Não utiliza alimentação pelo inspetor.
+Semente 91207. O teste usa menu, A/D, propulsor, escavação, aspiração, inventário, despejo e catálogo. Não atribui materiais, inventário, pesquisas ou receitas para obter o primeiro ouro.
 
-A primeira medição obteve **6 ouro**, com **35 unidades peneiradas**, após **21.50 segundos de simulação** desde o início. Lotes pequenos podem exigir mais uma mistura; o teste repõe material pelas mesmas ações e exige a coleta rentável em menos de três minutos.
+Primeira coleta rentável: **7 ouro em 21.333 segundos de simulação**, 34 unidades processadas e 111 células escavadas. A escavação não incrementa inventário; a aspiração separada recolhe grãos reais. Mistura é feita no bolsão natural e despejada pela ferramenta. Ouro paga Hidráulica. O teste constrói a rede de 864 unidades de capacidade, copia e recolhe um conjunto sem duplicação, gira uma parede, restaura IndexedDB e importa/exporta a partida. A interface cabe nas duas resoluções e em escala 1,4.
 
-O ouro financia Hidráulica; a construção conecta bomba, tubos e válvula a uma peneira. O teste seleciona, copia, paga e remove conjuntos, gira uma parede, confere o reembolso e restaura inventário/pesquisa/máquinas após salvar, recarregar, continuar, exportar e importar. Uma verificação adicional confirmou que importar um arquivo inválido mostra o motivo no menu inicial e preserva o mundo. A exploração por propulsor e caminhada alcançou **622.0 células** de profundidade. Não houve erros de JavaScript ou console.
+Depois, uma nova expedição atravessa a galeria usando movimento e propulsor até **x=369.400, y=624.118**. O mapa reúne esse trajeto; a máscara conserva 155.545 células conhecidas antes do teste de câmera. Não comprova toda a campanha por controles humanos.
 
-## Três minutos sem intervenção
+## Três minutos de automação física
 
-A instalação em [tests/fixtures/line.ts](../tests/fixtures/line.ts) é posicionada uma vez num mundo de tamanho completo. Sua única matéria-prima inicial é um depósito de 280 células de areia consolidada e água física num reservatório finito. A sonda libera grãos, quatro esteiras transportam, a válvula umedece, a peneira separa e o coletor credita. Durante a medição não há entrada artificial, alimentação por inspetor ou comando do jogador.
+Instalação controlada montada uma única vez, com depósito consolidado de areia, água finita, Sonda, esteiras, peneira, coletor, bomba, tubos e válvula. Plataforma de observação e duas luminárias dão leitura à cena. Nenhuma matéria-prima é acrescentada e nenhum controle é usado durante a operação.
 
-Duração real: **180.01 s**. Simulação: **180.00 s**, a 30 Hz. Ainda resta matéria-prima ao final.
+Duração real **180.008 s**, duração simulada **180.033 s**. Mina → transporte → umidificação → peneira → coleta. Ao final: **56 ouro**, 270 células liberadas e 205 unidades processadas; ainda há depósito remanescente.
 
-| Tempo de simulação | Células mineradas | Unidades peneiradas | Ouro coletado |
-| --- | --- | --- | --- |
-| 30 s | 45 | 32 | 11 |
-| 60 s | 90 | 67 | 21 |
-| 90 s | 135 | 101 | 31 |
-| 120 s | 180 | 135 | 44 |
-| 150 s | 225 | 172 | 52 |
-| 180 s | 270 | 205 | 56 |
+| Tempo | Ouro coletado | Escavação automática | Processado |
+| --- | ---: | ---: | ---: |
+| 30 s | 11 | 45 | 32 |
+| 60 s | 21 | 90 | 67 |
+| 90 s | 31 | 135 | 101 |
+| 120 s | 44 | 180 | 135 |
+| 150 s | 52 | 225 | 172 |
+| 180 s | 56 | 270 | 205 |
 
-Os testes conferem que cada água inicial permanece no mundo, num tubo ou foi consumida por um umedecimento, e que todo ouro emitido permanece físico ou creditado. O bônus de ouro é a abstração documentada de rendimento; resíduo não desaparece por isso.
-
-## Indústria avançada
-
-A instalação de [tests/fixtures/advanced.ts](../tests/fixtures/advanced.ts) recebe apenas areia e água. Em 5.400 ticks acelerados, produziu **205 argilas**, **202 pelotas**, **44 impactos**, **47 unidades de vidro fundido** e **15 cristais raros coletados**. Resíduo, cerâmica, energia, vidro e névoa dependem de saídas livres e transporte por gravidade. Pelotas permanecem sobre a prensa quando a bateria fica cheia. Esse cenário é separado da medição de três minutos reais.
+A instalação avançada recebe apenas os mesmos insumos crus na montagem. Em 5.400 passos produziu 202 pelotas, 44 impactos, 47 unidades fundidas e **15 cristais coletados**. Testa as receitas avançadas fisicamente; usa desbloqueios de cenário, não representa uma campanha avançada inteira por controles normais.
 
 ## Ambiente e desempenho
 
-Windows **win32 10.0.26200**, Node.js **v24.19.0**, **AMD Ryzen 7 5700X 8-Core Processor**, 16 processadores lógicos, **15.93 GiB de RAM**, Chrome headless **152.0.7977.84**. O benchmark de CPU roda fora do navegador, sem renderização, com 5.400 ticks por cenário; inclui os primeiros ticks e a estabilização inicial.
+Windows win32 10.0.26200, Node v24.19.0, AMD Ryzen 7 5700X 8-Core Processor, 15.928 GiB de RAM, 16 processadores lógicos. Sem throttling artificial. A medida de Node inclui simulação e atualização de memória observada, sem desenho.
 
-| Cenário 1024 × 1536 | Média por tick | p95 | p99 | Máximo | TypedArrays |
-| --- | --- | --- | --- | --- | --- |
-| Terreno gerado | 0.324 ms | 0.363 ms | 0.428 ms | 31.947 ms | 30.02 MiB |
-| Fábrica autônoma | 0.312 ms | 0.342 ms | 0.428 ms | 4.739 ms | 30.02 MiB |
+| Cenário Node | Média por tick | p95 | p99 | Máximo | TypedArrays do mundo | Cartografia |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| generated | 0.355 ms | 0.444 ms | 0.680 ms | 31.889 ms | 33.018 MiB | 3.000 MiB |
+| autonomous | 0.363 ms | 0.579 ms | 0.692 ms | 6.274 ms | 33.018 MiB | 3.000 MiB |
 
-No cenário de navegador, os pontos medidos registraram **143.961–144.017 FPS** pela cadência de requestAnimationFrame, **0.508–0.545 ms** de simulação e **0.147–0.195 ms** de desenho. Esses tempos são médias suavizadas no ponto de leitura; não são percentis do teste inteiro. A cadência próxima de 144 Hz corresponde a este ambiente headless e não comprova a apresentação física de um monitor.
+Geração: 186.352 ms. O máximo inclui inicialização/primeira varredura de chunks; percentis descrevem os 5.400 ticks, sem excluir esse custo. Atualização cartográfica com personagem parado: 0.007–0.007 ms/tick de média. RSS observado em Node: 93.914–113.422 MiB; inclui alocações transitórias e coleta de lixo.
 
-Heap JavaScript observado ao final: **71.33 MiB**. RSS do processo Node nos benchmarks: 96.52 MiB / 85.28 MiB. TypedArrays, heap e RSS têm escopos diferentes; não devem ser somados como se fossem medições independentes da memória total do navegador.
+Nos seis pontos da execução real: **80.270–144.022 FPS de requestAnimationFrame**, simulação **0.642–0.761 ms**, desenho **1.125–1.649 ms**. Atualização de descoberta naquele tick: 0.100–0.300 ms; último cálculo de luz: 1.500–2.000 ms. FPS/tempos de jogo são médias móveis pontuais, não percentis do período inteiro ou promessa de FPS em qualquer monitor. Heap JavaScript final observado: 82.438 MiB, incluindo transientes.
 
-## Capturas e revisão visual
+A revisão anterior mediu 0,312–0,324 ms/tick em Node e usava 30,018 MiB de TypedArrays. Esta acrescenta 3 MiB no mundo (fundo e variante) e 3 MiB de cartografia. A comparação de renderização anterior (0,147–0,195 ms) e atual inclui mudanças de cena, posição de observação, sprites e iluminação; não isola o custo de um único módulo.
 
-Capturas reais do Canvas e da interface, sem composição ou alteração de pixels. Foram revisados contraste, terreno consolidado versus grãos, escala do personagem, máquinas, saídas, legibilidade e sobreposição. A suíte verifica geometricamente os painéis em ambos os tamanhos e também o inspetor com escala de interface de 140%. A revisão corrigiu notificações que cobriam o texto do painel de pesquisa.
+## Capturas reais
+
+Todas são renderizadas pelo jogo: **1280 × 720** e **1920 × 1080**. As cinco cenas centrais vêm de controles normais; a linha autônoma, os laboratórios, a galeria e o teleporte de teste são cenários controlados. Galerias e materiais estão em pausa para comparar estados; animação e produção contínua são exercitadas na instalação autônoma.
 
 | Cena | 1280 × 720 | 1920 × 1080 |
 | --- | --- | --- |
-| Início · partida nova | [Imagem](images/01-inicio-1280.png) | [Imagem](images/01-inicio-1920.png) |
+| Partida nova · controles normais | [Imagem](images/01-inicio-1280.png) | [Imagem](images/01-inicio-1920.png) |
 | Primeira fábrica · controles normais | [Imagem](images/02-primeira-fabrica-1280.png) | [Imagem](images/02-primeira-fabrica-1920.png) |
 | Hidráulica · controles normais | [Imagem](images/03-fabrica-etapas-1280.png) | [Imagem](images/03-fabrica-etapas-1920.png) |
 | Exploração · controles normais | [Imagem](images/04-exploracao-1280.png) | [Imagem](images/04-exploracao-1920.png) |
 | Pesquisa · controles normais | [Imagem](images/05-pesquisa-1280.png) | [Imagem](images/05-pesquisa-1920.png) |
 | Linha autônoma · instalação controlada | [Imagem](images/06-linha-autonoma-1280.png) | [Imagem](images/06-linha-autonoma-1920.png) |
 | Indústria avançada · instalação controlada | [Imagem](images/07-industria-avancada-1280.png) | [Imagem](images/07-industria-avancada-1920.png) |
+| Percurso registrado · movimento normal | [Imagem](images/08-mapa-percurso-1280.png) | [Imagem](images/08-mapa-percurso-1920.png) |
+| Luminária construída dentro do disco conhecido | [Imagem](images/09-luminarias-1280.png) | [Imagem](images/09-luminarias-1920.png) |
+| Câmera sobre arquivo desconhecido · teste de ocultação | [Imagem](images/10-arquivo-desconhecido-1280.png) | [Imagem](images/10-arquivo-desconhecido-1920.png) |
+| Arquivo após descoberta · teleporte explícito de teste | [Imagem](images/11-arquivo-descoberto-1280.png) | [Imagem](images/11-arquivo-descoberto-1920.png) |
+| Galeria de transporte · 2× | [Imagem](images/12-galeria-transporte-1280.png) | [Imagem](images/12-galeria-transporte-1920.png) |
+| Transporte · detalhe 3× | [Imagem](images/12-galeria-transporte-3x-1280.png) | [Imagem](images/12-galeria-transporte-3x-1920.png) |
+| Transporte · detalhe 4× | [Imagem](images/12-galeria-transporte-4x-1280.png) | [Imagem](images/12-galeria-transporte-4x-1920.png) |
+| Galeria de processamento · 2× | [Imagem](images/12-galeria-processamento-1280.png) | [Imagem](images/12-galeria-processamento-1920.png) |
+| Galeria de estruturas e líquidos · 2× | [Imagem](images/12-galeria-estruturas-1280.png) | [Imagem](images/12-galeria-estruturas-1920.png) |
+| Materiais · 2× | [Imagem](images/13-materiais-2x-1280.png) | [Imagem](images/13-materiais-2x-1920.png) |
+| Materiais · 3× | [Imagem](images/13-materiais-3x-1280.png) | [Imagem](images/13-materiais-3x-1920.png) |
+| Materiais · 4× | [Imagem](images/13-materiais-4x-1280.png) | [Imagem](images/13-materiais-4x-1920.png) |
 
-![Exploração por controles normais](images/04-exploracao-1280.png)
+Revisão visual: painéis compactos sem sobreposição nas resoluções exigidas; tipografia principal 14 px; personagem menor que a instalação; areia quente, água azul, ouro amarelo e cristais violetas; silhuetas próprias; tubos escolhendo conexões reais; fundo sem faixas extensas; grãos isolados mantêm cor, bordas somente no exterior da massa; nomes de regiões via descoberta; desconhecido recobre toda a cena. A distribuição de luz foi ajustada depois de capturas mostrarem equipamentos pouco legíveis entre fontes muito espaçadas.
 
-![Instalação física avançada controlada](images/07-industria-avancada-1280.png)
+## Comparação
 
-## Limites da evidência
+| Cena | Antes | Depois |
+| --- | --- | --- |
+| Superfície | [Antes](images/comparacao/antes-superficie-1280.png) | [Depois](images/01-inicio-1280.png) |
+| Primeira hidráulica | [Antes](images/comparacao/antes-fabrica-1280.png) | [Depois](images/03-fabrica-etapas-1280.png) |
+| Exploração | [Antes](images/comparacao/antes-exploracao-1280.png) | [Depois](images/04-exploracao-1280.png) |
 
-O roteiro por teclado e mouse comprova a primeira cadeia, pesquisa hidráulica, construção e deslocamento subterrâneo. A instalação de três minutos é montada por fixture; a montagem avançada usa tempo acelerado. Nenhum desses testes equivale a um estudo de balanceamento de toda a campanha com jogadores.
+![Fábrica revisada](images/03-fabrica-etapas-1280.png)
 
-A física é discreta e estilizada, sem pressão hidráulica ou termodinâmica contínua. Energia usa uma bateria compartilhada; mundo e recursos são finitos. As medições correspondem a este desktop e a instalações pequenas, sem garantir desempenho em milhares de máquinas ou computadores mais lentos. Fechar o processo imediatamente pode interromper uma gravação assíncrona; salvar/exportar explicitamente é a forma de guardar a última alteração.
+![Exploração com conhecimento e luz separados](images/04-exploracao-1280.png)
 
-Relatórios detalhados, logs, downloads de save e capturas temporárias ficam em `.local/`, fora do Git. Esta página e as imagens selecionadas documentam a validação; não incluem partidas pessoais ou credenciais.
+## Limites restantes
+
+Física discreta e estilizada, bateria industrial compartilhada, oclusão de luz aproximada e mapa finito. O mapa guarda material observado, sem um histórico completo de estados das máquinas. Saves anteriores não possuem o caminho histórico; a migração revela entorno e construções. A primeira progressão é testada por controles normais; a campanha completa e o balanceamento de longo prazo precisam de sessões com jogadores. Desempenho em máquinas mais lentas, milhares de construções, multiplayer, nuvem e controles por toque não foram validados/adicionados.
