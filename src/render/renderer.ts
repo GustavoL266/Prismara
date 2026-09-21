@@ -1,7 +1,7 @@
 import { World, CHUNK_SIZE } from '../sim/world';
 import { Mat, materials } from '../sim/materials';
 import { machineSize, machinePorts, secondary, type Machine, type MachineKind, type Factory } from '../sim/machines';
-import { surfaceLevel, chambers } from '../sim/terrain';
+import { surfaceAt, chambers } from '../sim/terrain';
 import type { Player } from '../game/player';
 import type { Area, Blueprint } from '../game/game';
 import type { Exploration } from '../game/exploration';
@@ -10,6 +10,7 @@ import { drawMachine, operating } from './sprites';
 import { Lighting } from './lighting';
 import { geologicalNoise, mineralHash } from '../sim/geology';
 import { FogBoundary } from './fog';
+import { SurfaceBackground } from './surface-background';
 
 export interface RenderState {world:World;exploration:Exploration;factory:Factory;player:Player;time:number;pointer:{x:number;y:number};tool:string;building:MachineKind;rotation:number;selectedId:number;paused:boolean;shake:boolean;won:boolean;area?:Area;selection?:Set<number>;blueprint?:Blueprint[];dragging?:boolean}
 export class Renderer {
@@ -18,7 +19,7 @@ export class Renderer {
   private terrain=document.createElement('canvas');private terrainCtx:CanvasRenderingContext2D;private pixels?:ImageData;
   private colors:number[][][];private source?:World;private origin={x:0,y:0};private miniTick=-1;
   private fog=document.createElement('canvas');private fogCtx=this.fog.getContext('2d')!;private fogPixels?:ImageData;
-  lighting=new Lighting();private mapPixels?:ImageData;private mapPointer?:{x:number;y:number};
+  lighting=new Lighting();private mapPixels?:ImageData;private mapPointer?:{x:number;y:number};surfaceBackground=new SurfaceBackground();
   private fogBoundary=new FogBoundary();
   private effectX=new Float32Array(320);private effectY=new Float32Array(320);private effectVX=new Float32Array(320);private effectVY=new Float32Array(320);private effectLife=new Float32Array(320);private effectColor=new Uint8Array(320);private effectIndex=0;
   constructor(canvas:HTMLCanvasElement,mini:HTMLCanvasElement){
@@ -125,23 +126,12 @@ export class Renderer {
     }
   }
   private background(s:RenderState){
-    const c=this.ctx,ground=this.screenPoint(0,surfaceLevel(s.world)).y;
-    c.fillStyle='#17191D';c.fillRect(0,0,this.width,this.height);
-    if(ground>0){
-      c.save();c.beginPath();c.rect(0,0,this.width,Math.min(this.height,ground));c.clip();c.fillStyle='#79B6D2';c.fillRect(0,0,this.width,Math.max(0,ground));
-      c.fillStyle='#B4D5D9';c.fillRect(0,Math.max(0,ground-75*this.camera.zoom),this.width,75*this.camera.zoom);
-      const sun=this.screenPoint(s.world.width*.16,surfaceLevel(s.world)-77);c.fillStyle='#F3D893';c.fillRect(sun.x-18,sun.y-16,36,32);c.fillRect(sun.x-22,sun.y-9,44,18);
-      for(let layer=0;layer<3;layer++){
-        c.fillStyle=['#8AABA9','#889786','#9F9B6D'][layer];c.beginPath();c.moveTo(0,ground);
-        for(let x=0;x<=this.width+8;x+=8){const wx=x/this.camera.zoom+this.camera.x*(.12+layer*.08),ridge=Math.sin(wx*.018+layer*2)*7+Math.sin(wx*.043)*3;c.lineTo(x,Math.round(ground-(34-layer*9)*this.camera.zoom+ridge*this.camera.zoom));}
-        c.lineTo(this.width,ground);c.fill();
-      }c.restore();
-    }
-  }
-  private scenery(s:RenderState){
-    const c=this.ctx,top=surfaceLevel(s.world);
-    for(let x=25;x<s.world.width;x+=97)if(this.visible(x,top-18,16,18)){
-      const y=top+Math.floor(Math.sin(x*.026)*5);c.fillStyle='#343536';c.fillRect(x,y-11,2,11);c.fillRect(x-4,y-8,5,2);c.fillRect(x-5,y-14,2,8);c.fillRect(x+1,y-10,5,2);c.fillRect(x+5,y-15,2,7);c.fillStyle='#ad8750';c.fillRect(x-5,y-14,2,2);c.fillRect(x+5,y-15,2,2);
+    const c=this.ctx;c.fillStyle='#17191D';c.fillRect(0,0,this.width,this.height);
+    this.surfaceBackground.draw(c,s.world,this.width,this.height,this.origin.x,this.origin.y,this.camera.zoom,this.camera.x);
+  }  private scenery(s:RenderState){
+    const c=this.ctx;
+    for(let x=25;x<s.world.width;x+=97)if(this.visible(x,surfaceAt(s.world,x)-18,16,18)){
+      const y=surfaceAt(s.world,x);c.fillStyle='#343536';c.fillRect(x,y-11,2,11);c.fillRect(x-4,y-8,5,2);c.fillRect(x-5,y-14,2,8);c.fillRect(x+1,y-10,5,2);c.fillRect(x+5,y-15,2,7);c.fillStyle='#ad8750';c.fillRect(x-5,y-14,2,2);c.fillRect(x+5,y-15,2,2);
     }
     for(const chamber of chambers(s.world))if(this.visible(chamber.x-36,chamber.y-45,72,45)){
       const {x,y}=chamber;for(const d of [-1,1]){c.fillStyle='#39353f';c.fillRect(x+d*27-3,y-38,6,37);c.fillStyle='#6d6177';c.fillRect(x+d*27-3,y-38,6,2);c.fillRect(x+d*27-1,y-33,1,26);}
@@ -180,11 +170,11 @@ export class Renderer {
       }
       this.lighting.update(w,s.player.x,s.player.y,s.factory.machines,left,top,right,bottom,emissions);
       this.fogBoundary.update(s.exploration,left,top,right,bottom);
-      const data=this.fogPixels!.data,ground=surfaceLevel(w);
+      const data=this.fogPixels!.data;
       for(let y=top;y<bottom;y++)for(let x=left;x<right;x++){
         const i=((y-top)*width+x-left)*4;
         if(!s.exploration.knows(x,y)){data[i+3]=255;continue;}
-        const daylight=y<ground?1:y<ground+16?.12:.055;
+        const ground=surfaceAt(w,x),daylight=y<ground?1:y<ground+16?.12:.055;
         const light=Math.max(daylight,this.lighting.intensity(x+.5,y+.5));
         data[i+3]=Math.round(255*(1-Math.min(1,light*.97+daylight*.1)*this.fogBoundary.strength(x,y)));
       }

@@ -1,5 +1,6 @@
 import { Mat, materials } from './materials';
 import { CONTACT_REACTIONS, REACTIONS } from './reactions';
+import type { TerrainData } from './terrain-data';
 
 export const CHUNK_SIZE = 16;
 export const DEFAULT_TEMPERATURE = REACTIONS.physics.ambientTemperature;
@@ -12,6 +13,7 @@ export class World {
   readonly seed: number;
   tick = 0;
   rngState: number;
+  generation?:TerrainData;
   reactionCounts: Record<string, number> = { pulp: 0, crystal: 0, glass: 0, wet: 0, calcined: 0 };
   readonly cells: Uint8Array;
   readonly temperature: Int16Array;
@@ -99,6 +101,7 @@ export class World {
   }
 
   clear(): void {
+    this.generation=undefined;
     this.cells.fill(Mat.Air);
     this.visualVariant.fill(0); this.backdrop.fill(0);
     this.temperature.fill(DEFAULT_TEMPERATURE);

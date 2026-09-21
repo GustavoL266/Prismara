@@ -1,5 +1,6 @@
 import { Mat, materials } from '../sim/materials';
 import type { World } from '../sim/world';
+export const PLAYER_BODY={halfWidth:2,height:9,bootRows:2} as const;
 export class Player {
   x = 130; y = 151; vx = 0; vy = 0; facing = 1; grounded = false; thrust = false; fuel = 100;
   propulsion = 0;
@@ -39,11 +40,11 @@ export class Player {
     }
   }
   private collides(world: World, px: number, py: number): boolean {
-    for (let y = Math.floor(py - 8); y <= Math.floor(py); y++) for (let x = Math.floor(px - 2); x <= Math.floor(px + 2); x++) {
+    for (let y = Math.floor(py - PLAYER_BODY.height+1); y <= Math.floor(py); y++) for (let x = Math.floor(px - PLAYER_BODY.halfWidth); x <= Math.floor(px + PLAYER_BODY.halfWidth); x++) {
       const material = world.get(x, y);
       if (!world.inBounds(x, y) || world.blocked[world.index(x, y)] || materials[material].state === 'terrain' ||
         world.consolidated[world.index(x,y)] ||
-        material === Mat.Wall || (y > py - 2 && materials[material].state === 'granular')) return true;
+        material === Mat.Wall || (y > py - PLAYER_BODY.bootRows && materials[material].state === 'granular')) return true;
     }
     return false;
   }

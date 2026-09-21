@@ -5,10 +5,11 @@ import { acceptsFluid, isPipeMachine, PIPE_CAPACITY } from '../sim/pipes';
 import { Player } from './player';
 import { RESEARCH } from './progression';
 import { Exploration } from './exploration';
-import { regionAt, surfaceLevel, chambers } from '../sim/terrain';
+import { regionAt, surfaceLevel, chambers, legacyTerrainData } from '../sim/terrain';
+import { restoreTerrainData } from '../sim/terrain-persistence';
 
 export const SAVE_KEY = 'prismara.world.v1';
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export interface Progress { mined: number; mixed: number; crystalsMade: number; tier: number; ruins: boolean; won: boolean; elapsed: number; mission: number; researched?:string[]; discovered?:number[]; solved?:string[]; chamberFeed?:number; visited?:string[] }
 export interface Preferences { volume: number; shake: boolean; zoom: number; uiScale?:number }
 export interface Saveable { world: World; factory: Factory; player: Player; inventory: number[]; progress: Progress; preferences: Preferences; exploration?:Exploration }
@@ -54,7 +55,7 @@ export function serialize(game: Saveable): string {
     version: SAVE_VERSION, savedAt: Date.now(),
     world: { width: w.width, height: w.height, seed: w.seed, tick: w.tick, rngState: w.rngState,
       cells: rle(w.cells), temperature: rle(w.temperature), fall: rle(w.fall), active: rle(w.active), reactionCounts: w.reactionCounts,
-      consolidated:rle(w.consolidated),velocityX:rle(w.velocityX),velocityY:rle(w.velocityY),visualVariant:rle(w.visualVariant),backdrop:rle(w.backdrop) },
+      consolidated:rle(w.consolidated),velocityX:rle(w.velocityX),velocityY:rle(w.velocityY),visualVariant:rle(w.visualVariant),backdrop:rle(w.backdrop),generation:w.generation??legacyTerrainData(w) },
     exploration:{width:w.width,height:w.height,discoveredCells:rle(knowledge.discoveredCells),rememberedMaterial:rle(knowledge.rememberedMaterial),points:knowledge.points,map:knowledge.map},
     machines: game.factory.machines, nextId: game.factory.nextId,
     energy: { value: game.factory.energy.value, capacity: game.factory.energy.capacity },
@@ -68,12 +69,13 @@ export function serialize(game: Saveable): string {
 
 export function deserialize(raw: string): Saveable {
   const data: unknown = JSON.parse(raw);
-  if (!record(data) || ![1,2,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
+  if (!record(data) || ![1,2,3,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
   const legacy=data.version===1;
   const w = data.world;
   if (!record(w) || !integer(w.width, 32, 1024) || !integer(w.height, 32, 2048)) throw new Error('Dimensão inválida');
   if (!integer(w.seed, 0, 0xffffffff) || !integer(w.tick, 0, 0xffffffff) || !integer(w.rngState, 0, 0xffffffff)) throw new Error('Semente inválida');
   const world = new World(w.width, w.height, w.seed), length = w.width * w.height;
+  world.generation=data.version>=4?restoreTerrainData(w.generation,world):legacyTerrainData(world);
   world.cells.set(unrle(w.cells, length, 0, materials.length - 1));
   world.temperature.set(unrle(w.temperature, length, -32768, 32767));
   world.fall.set(unrle(w.fall, length, 0, 65535));
@@ -217,7 +219,7 @@ export function serializeAsync(game:Saveable):Promise<string> {
   const w=game.world,id=++encodingId;
   return new Promise((resolve,reject)=>{
     pending.set(id,{resolve,reject});
-    encoder!.postMessage({id,game:{world:{width:w.width,height:w.height,seed:w.seed,tick:w.tick,rngState:w.rngState,cells:w.cells,temperature:w.temperature,fall:w.fall,active:w.active,reactionCounts:w.reactionCounts,consolidated:w.consolidated,velocityX:w.velocityX,velocityY:w.velocityY,visualVariant:w.visualVariant,backdrop:w.backdrop},
+    encoder!.postMessage({id,game:{world:{width:w.width,height:w.height,seed:w.seed,tick:w.tick,rngState:w.rngState,cells:w.cells,temperature:w.temperature,fall:w.fall,active:w.active,reactionCounts:w.reactionCounts,consolidated:w.consolidated,velocityX:w.velocityX,velocityY:w.velocityY,visualVariant:w.visualVariant,backdrop:w.backdrop,generation:w.generation??legacyTerrainData(w)},
       exploration:game.exploration?{discoveredCells:game.exploration.discoveredCells,rememberedMaterial:game.exploration.rememberedMaterial,points:game.exploration.points,map:game.exploration.map}:undefined,
       factory:{machines:game.factory.machines,nextId:game.factory.nextId,energy:game.factory.energy,counters:game.factory.counters,gold:game.factory.gold,crystals:game.factory.crystals},
       player:game.player,inventory:game.inventory,progress:game.progress,preferences:game.preferences}});

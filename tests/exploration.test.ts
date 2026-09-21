@@ -65,7 +65,7 @@ test('viewport borders do not invent darkness when knowledge continues beyond th
  const e=new Exploration(new World(320,320,3));e.update(160,160);const fog=new FogBoundary();fog.update(e,130,130,190,190);
  for(let y=130;y<190;y++)for(let x=130;x<190;x++)assert.equal(fog.strength(x,y),1);
 });
-test('v3 roundtrip retains knowledge, old map information, preferences, points and stable particle variants',()=>{
+test('v4 roundtrip retains knowledge, old map information, preferences, points and stable particle variants',()=>{
  const g=game(),e=g.exploration!;g.world.set(112,113,Mat.Gold);e.update(200,110);e.map={x:210,y:130,zoom:3};
  g.world.set(112,113,Mat.Water);const restored=deserialize(serialize(g));
  assert.deepEqual(restored.exploration!.discoveredCells,e.discoveredCells);assert.deepEqual(restored.exploration!.rememberedMaterial,e.rememberedMaterial);

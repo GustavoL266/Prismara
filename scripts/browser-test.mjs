@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import {existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {cpus,totalmem,platform,release} from 'node:os';
 import {chromium} from '@playwright/test';
+import {createServer} from 'vite';
 import {validateExploration} from './browser-exploration.mjs';
+import {traverseGeneratedGallery,validateSurfaceBackground} from './browser-terrain.mjs';
 
 const origin=process.env.PRISMARA_TEST_URL??'http://127.0.0.1:5173',artifacts=resolve('.local/browser');
 const chrome=process.env.CHROME_PATH??(process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':undefined);
@@ -37,7 +38,7 @@ const assertHUD=async()=>{
   return boxes;
 };
 try{
-  if(!await ready()){server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5173','--strictPort'],{stdio:'ignore',windowsHide:true,env:{...process.env,CI:'true'}});for(let i=0;i<100&&!await ready();i++)await delay(100);assert.ok(await ready(),'Vite unavailable');}
+  if(!await ready()){server=await createServer({logLevel:'error',server:{host:'127.0.0.1',port:5173,strictPort:true}});await server.listen();for(let i=0;i<100&&!await ready();i++)await delay(100);assert.ok(await ready(),'Vite unavailable');}
   browser=await chromium.launch({headless:true,...(chrome&&existsSync(chrome)?{executablePath:chrome}:{})});
   const context=await browser.newContext({viewport:{width:1280,height:720},reducedMotion:'reduce',acceptDownloads:true});page=await context.newPage();
   report.environment.browser=browser.version();
@@ -49,6 +50,7 @@ try{
   assert.equal(await page.locator('#modal-feedback').isVisible(),true);assert.equal(await page.evaluate(()=>__prismara.started),false);pass('Invalid portable import reports its reason inside the start menu and leaves the world untouched');
   await page.locator('#seed').fill('91207');await page.locator('[data-action="new"]').click();await delay(1100);
   await screenshot('01-inicio');pass('New seeded deep world through normal menu',{dimensions:await page.evaluate(()=>[__prismara.world.width,__prismara.world.height])});
+  await validateSurfaceBackground(page,screenshot,pass);
   const position=()=>page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,fuel:__prismara.player.fuel}));
   const start=await position();await page.keyboard.down('d');await delay(500);await page.keyboard.up('d');const moved=await position();assert.ok(moved.x>start.x+8);
   await page.keyboard.down('a');await delay(200);await page.keyboard.up('a');await page.keyboard.down('Space');await delay(400);await page.keyboard.up('Space');
@@ -148,19 +150,12 @@ try{
     return {counters:g.factory.counters,gold:g.factory.gold,crystals:g.factory.crystals};
   });
   assert.ok(advanced.crystals>=8&&advanced.counters.impacts>=30);await screenshot('07-industria-avancada');pass('Physical advanced factory with impact energy, ceramics, molten glass and rare collection',advanced);
-  // Actual generated subterranean rendering; move through the connected gallery with normal controls.
+  // Actual generated subterranean rendering; follow the generated player-body route with normal controls.
   await page.evaluate(()=>{__prismara.newWorld(91207);__prismara.preferences.uiScale=1;});
-  await page.keyboard.down('d');await page.keyboard.down('Space');await delay(3000);await page.keyboard.up('Space');await delay(4600);await page.keyboard.up('d');
-  const travelStart=Date.now();
-  while((await position()).y<550&&Date.now()-travelStart<30000){
-    const target=await page.evaluate(()=>{const g=__prismara,y=Math.floor(g.player.y+15),open=[];for(let x=345;x<432;x++){let clear=true;for(let dx=-3;dx<=3;dx++)if(g.world.get(x+dx,y)!==0)clear=false;if(clear)open.push(x);}return open.length?open[Math.floor(open.length/2)]:g.player.x;});
-    const p=await position(),key=target>p.x+2?'d':target<p.x-2?'a':null;if(key)await page.keyboard.down(key);await delay(160);if(key)await page.keyboard.up(key);
-  }
-  assert.ok((await position()).y>230,'connected gallery must be reachable by normal controls');
-  await screenshot('04-exploracao');pass('Normal travel reaches a connected subterranean region',await position());
+  await traverseGeneratedGallery(page,screenshot,pass);
   await validateExploration(page,screenshot,pass);
   assert.deepEqual(report.consoleErrors,[]);pass('No browser JavaScript or console errors');report.ok=true;
 }catch(error){
   report.ok=false;report.error=error.stack??String(error);console.error(error);process.exitCode=1;
   if(page){await page.screenshot({path:resolve(artifacts,'failure.png')}).catch(()=>{});report.debug=await page.evaluate(()=>window.__prismara?{panel:__prismara.panel,inventory:__prismara.inventory,progress:__prismara.progress,counters:__prismara.factory.counters,gold:__prismara.factory.gold,machines:__prismara.factory.machines,toast:document.getElementById('toast')?.textContent}:null).catch(()=>null);}
-}finally{report.finishedAt=new Date().toISOString();writeFileSync(resolve(artifacts,'report.json'),JSON.stringify(report,null,2));await browser?.close();server?.kill();console.log('Browser evidence: '+artifacts);}
+}finally{report.finishedAt=new Date().toISOString();writeFileSync(resolve(artifacts,'report.json'),JSON.stringify(report,null,2));await browser?.close();await server?.close();console.log('Browser evidence: '+artifacts);}

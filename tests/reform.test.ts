@@ -9,6 +9,7 @@ import {RESEARCH} from '../src/game/progression';
 import {deserialize,serialize,type Saveable} from '../src/game/save';
 import {Player} from '../src/game/player';
 import {generateTerrain,spawnPoint,chambers} from '../src/sim/terrain';
+import {reachablePlayer} from '../src/sim/terrain-access';
 import {installLine} from './fixtures/line';
 import {installAdvancedLine} from './fixtures/advanced';
 import {Game} from '../src/game/game';
@@ -150,10 +151,5 @@ test('the ancient mechanism accepts twelve supported pellets without requiring s
 });
 for(const seed of [1,7,91207])test('deep world has traversable connecting galleries and safe initial basin, seed '+seed,()=>{
   const w=new World(1024,1536,seed);generateTerrain(w);const p=spawnPoint(w);assert.equal(w.get(p.x,p.y),Mat.Air);
-  const queue:number[]=[w.index(Math.floor(w.width*.38+Math.sin(172*.009+seed)*24),150)];
-  // Locate the actual carved entrance, independent of the seeded phase.
-  queue.length=0;for(let x=330;x<440;x++)if(w.get(x,200)===Mat.Air)queue.push(w.index(x,200));
-  const seen=new Uint8Array(w.cells.length);for(const i of queue)seen[i]=1;
-  for(let head=0;head<queue.length;head++){const i=queue[head],x=i%w.width,y=Math.floor(i/w.width);for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const xx=x+dx,yy=y+dy;if(!w.inBounds(xx,yy))continue;const j=w.index(xx,yy),mat=w.cells[j];if(seen[j]||!([Mat.Air,Mat.Water,Mat.Steam,Mat.Crystal] as Mat[]).includes(mat)||w.consolidated[j])continue;seen[j]=1;queue.push(j);}}
-  for(const c of chambers(w))assert.ok(seen[w.index(c.x-20,c.y-30)],'connected chamber '+c.id);
+  const {reachable}=reachablePlayer(w,p.x,p.y);for(const c of chambers(w))assert.ok(reachable[w.index(c.x-20,c.y-30)],'connected chamber '+c.id);
 });

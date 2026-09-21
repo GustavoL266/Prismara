@@ -33,7 +33,7 @@ export async function validateExploration(page,screenshot,pass){
     const {serialize,deserialize}=await import('/src/game/save.ts'),g=__prismara,raw=serialize(g),r=deserialize(raw);
     const equal=(a,b)=>a.length===b.length&&a.every((n,i)=>n===b[i]);
     return {version:JSON.parse(raw).version,mask:equal(g.exploration.discoveredCells,r.exploration.discoveredCells),memory:equal(g.exploration.rememberedMaterial,r.exploration.rememberedMaterial),variants:equal(g.world.visualVariant,r.world.visualVariant),map:JSON.stringify(g.exploration.map)===JSON.stringify(r.exploration.map)};
-  });assert.deepEqual(restored,{version:3,mask:true,memory:true,variants:true,map:true});pass('Portable v3 snapshot preserves discovery and last observation exactly',restored);
+  });assert.deepEqual(restored,{version:4,mask:true,memory:true,variants:true,map:true});pass('Portable v4 snapshot preserves discovery and last observation exactly',restored);
 
   // Controlled lamp rig: placement is made inside the actual initial player disk.
   const lamp=await page.evaluate(async()=>{
