@@ -45,7 +45,7 @@ export async function traverseGeneratedGallery(page,screenshot,pass){
     const p=await page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,fuel:__prismara.player.fuel})),target=route.waypoints[index],distance=Math.hypot(target.x-p.x,target.y-p.y);
     if(distance<8){index++;lastProgress=Date.now();best=Infinity;continue;}if(distance<best-1){best=distance;lastProgress=Date.now();}
     for(const depth of [300,450,600])if(p.y>=depth&&!captured.has(depth)){captured.add(depth);await screenshot('15-percurso-'+depth);}
-    const stalled=Date.now()-lastProgress;let horizontal=target.x>p.x+1?'d':target.x<p.x-1?'a':null;if(!horizontal&&target.y>p.y+2&&stalled>1200)horizontal=index%2?'a':'d';const needsLift=target.y<p.y-2;
+    const stalled=Date.now()-lastProgress;let horizontal=target.x>p.x+.25?'d':target.x<p.x-.25?'a':null;if(!horizontal&&target.y>p.y+2&&stalled>1200){const next=route.waypoints[Math.min(index+1,route.waypoints.length-1)];horizontal=next.x>=p.x?'d':'a';}const needsLift=target.y<p.y-2;
     if(horizontal)await page.keyboard.down(horizontal);if(needsLift&&p.fuel>8)await page.keyboard.down('Space');await delay(95);if(needsLift)await page.keyboard.up('Space');if(horizontal)await page.keyboard.up(horizontal);await delay(needsLift?35:20);
     if(Date.now()-lastProgress>9000)throw Error('Normal controls became stuck near '+JSON.stringify({p,target,index}));
   }
