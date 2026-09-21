@@ -19,6 +19,7 @@ npm test
 npm run build
 npm run test:browser
 npm run benchmark
+npm run audit:terrain
 ```
 
 O navegador não precisa de servidor de contas. O teste de navegador inicia o Vite se necessário; no Windows utiliza Chrome instalado. Em outros sistemas, instale Chromium com `npx playwright install chromium`. `CHROME_PATH` e `PRISMARA_TEST_URL` permitem configurar o navegador e o servidor. A suíte leva aproximadamente quatro minutos, incluindo **três minutos reais**, sem intervenção, de uma instalação autônoma.
@@ -126,7 +127,11 @@ Nenhum ramo básico exige cristais. A fonte inicial de ouro está disponível se
 
 ## Mundo e objetivos
 
-Novas partidas usam **1024 × 1536 células**, com uma galeria sinuosa conectando seis regiões: Planície Âmbar, Galerias do Sedimento, Aquíferos de Ardósia, Estratos de Geada, Fendas Incandescentes e Arquivo das Profundezas. Depósitos aparecem em veios e bolsões. Nomes de região aparecem na descoberta.
+Novas partidas usam **1024 × 1536 células**. O gerador primeiro deforma a superfície e as fronteiras das seis regiões; depois distribui salas com rejeição espacial que considera seu tamanho, constrói uma árvore de conexões com atalhos, escava túneis curvos de largura variável, refina o contorno e só então insere ruínas, veios e água. As famílias incluem galerias largas, salões altos, arcos, cavidades inclinadas, lobos, pilares, bacias e bolsões isolados intencionais.
+
+Planície Âmbar, Galerias do Sedimento, Aquíferos de Ardósia, Estratos de Geada, Fendas Incandescentes e Arquivo das Profundezas possuem limites laterais irregulares. O minério aparece em veios de espessura variável e a água ocupa depressões verificadas pelas mesmas regras diagonais da simulação. Uma máscara de **5 × 9 células**, com política especial para grãos junto às botas, comprova que o corpo do explorador atravessa toda a rede principal. Os principais parâmetros ficam em [terrain-data.ts](src/sim/terrain-data.ts); `npm run audit:terrain` executa 30 sementes e produz mapas de diagnóstico em seis camadas.
+
+Na superfície, a paisagem fornecida fica atrás do mundo e é recortada coluna a coluna pelo perfil real de `surfaceAt`. Ela usa escala equivalente a `cover`, sem deformação, e paralaxe horizontal de **0,035**; esse valor, a margem e o asset podem ser trocados em [assets.ts](src/render/assets.ts). Quando o limite do terreno sai pelo topo da câmera, a imagem nem sequer é desenhada. O subterrâneo continua usando exclusivamente `world.backdrop`, iluminação e descoberta.
 
 O personagem registra permanentemente um **disco de 80 células** ao se mover. O desconhecido fica preto opaco na cena e nos mapas. Zoom, câmera e resolução não aumentam a descoberta. O minimapa acompanha o entorno; **M** abre o mapa geral, navegável por arraste e roda. O mapa guarda a última matéria observada: alterações distantes aparecem ao retornar.
 
@@ -136,7 +141,7 @@ Três arquivos contêm desafios distribuídos: drenar uma câmara, derreter uma 
 
 ## Salvamento e compatibilidade
 
-Formato **v3**, com materiais antigos mantendo os IDs 0–16 e novos IDs acrescentados a partir de 17. A migração lê partidas **v1 e v2**, preserva materiais, máquinas, líquidos dos tubos, energia e inventário, e converte níveis antigos em pesquisas compatíveis. Mundos antigos conservam suas dimensões para preservar construções e partículas; novos mundos usam a geração profunda. Como saves antigos não registravam células exploradas, a migração revela o entorno atual e os footprints das construções. O caminho histórico não pode ser recuperado.
+Formato **v4**, com materiais antigos mantendo os IDs 0–16 e novos IDs acrescentados a partir de 17. A geometria gerada — superfície, fronteiras, salas, túneis, reservatórios e posições das câmaras — passa a fazer parte do save; assim uma atualização futura do gerador não desloca objetivos de uma partida existente. A migração lê partidas **v1, v2 e v3**, preserva suas células e congela as coordenadas compatíveis da geração anterior, sem regenerar o mundo. Também preserva materiais, máquinas, líquidos dos tubos, energia e inventário, e converte níveis antigos em pesquisas compatíveis. Como saves antigos não registravam células exploradas, a migração revela o entorno atual e os footprints das construções. O caminho histórico não pode ser recuperado.
 
 O salvamento usa **IndexedDB assíncrono**, com leitura de `prismara.world.v1` no localStorage para migração. Preserva células, consolidação dos depósitos, temperatura, queda, velocidades dos lançamentos, atividade dos chunks, estado aleatório, pesquisa, desafios, explorador, preferências, moedas e buffers de cada tubo. Não avança a simulação ao carregar. Filas de despejo são canceladas; material ainda na mochila permanece nela.
 
