@@ -69,6 +69,11 @@ try{
   await material(17);await page.keyboard.press('2');await page.keyboard.down('Shift');
   for(const x of [198,204,210,216])await hold(x,175,500);
   await page.keyboard.up('Shift');
+  for(let attempt=0;attempt<4&&(await inventory())[17]<35;attempt++){
+    const pockets=await page.evaluate(()=>{const g=__prismara,bins=new Map();for(let y=150;y<=205;y++)for(let x=190;x<=226;x++)if(g.world.get(x,y)===17&&Math.hypot(x-g.player.x,y-g.player.y)<=g.reach-3){const key=`${Math.floor(x/5)},${Math.floor(y/5)}`,bin=bins.get(key)??{x:0,y:0,count:0};bin.x+=x;bin.y+=y;bin.count++;bins.set(key,bin);}return [...bins.values()].sort((a,b)=>b.count-a.count).slice(0,12).map(b=>({x:Math.round(b.x/b.count),y:Math.round(b.y/b.count)}));});
+    if(pockets.length){await page.keyboard.press('2');await page.keyboard.down('Shift');for(const p of pockets){if((await inventory())[17]>=35)break;await hold(p.x,p.y,220);}await page.keyboard.up('Shift');}
+    if((await inventory())[17]<35){await material(1);await hold(207,165,700);await delay(1400);await material(17);}
+  }
   assert.ok((await inventory())[17]>=35,'normal basin must provide enough wet sand');
   const wet=(await inventory())[17];await material(17);await hold(177,124,Math.ceil(wet/60*1000)+300);await delay(4000);
   // Small batches have variable mineral yield. Replenish by the same normal actions if needed.
