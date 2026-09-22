@@ -42,16 +42,17 @@ export async function traverseGeneratedGallery(page,screenshot,pass){
     const clearLine=(a,b)=>{const steps=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)*2);for(let n=0;n<=steps;n++){const t=n/Math.max(1,steps);if(g.player['collides'](g.world,a.x+.5+(b.x-a.x)*t,a.y+(b.y-a.y)*t))return false;}return true;},waypoints=[];
     for(let cursor=0;cursor<path.length-1;){let next=Math.min(path.length-1,cursor+24);while(next>cursor+1&&!clearLine(path[cursor],path[next]))next--;waypoints.push(path[next]);cursor=next;}return {target:room,pathCells:path.length,waypoints};
   });
-  let index=0,lastProgress=Date.now(),lastClear=0,best=Infinity;const captured=new Set(),started=Date.now();
+  let index=0,lastProgress=Date.now(),lastClear=0,lastLift=0,best=Infinity;const captured=new Set(),started=Date.now();
   while(index<route.waypoints.length&&Date.now()-started<105000){
-    const p=await page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,fuel:__prismara.player.fuel})),target=route.waypoints[index],distance=Math.hypot(target.x-p.x,target.y-p.y);
+    const p=await page.evaluate(()=>{const g=__prismara,q=g.player;return {x:q.x,y:q.y,fuel:q.fuel,downBlocked:q['collides'](g.world,q.x,q.y+1)};}),target=route.waypoints[index],distance=Math.hypot(target.x-p.x,target.y-p.y);
     const desiredX=target.x+.5,xAligned=Math.abs(desiredX-p.x)<=1.1;
     if(xAligned&&Math.abs(target.y-p.y)<=2.5){index++;lastProgress=Date.now();best=Infinity;continue;}if(distance<best-1){best=distance;lastProgress=Date.now();}
     for(const depth of [300,450,600])if(p.y>=depth&&!captured.has(depth)){captured.add(depth);await screenshot('15-percurso-'+depth);}
-    const stalled=Date.now()-lastProgress;let horizontal=desiredX>p.x+.55?'d':desiredX<p.x-.55?'a':null;const needsLift=target.y<p.y-2;
+    const stalled=Date.now()-lastProgress;let horizontal=desiredX>p.x+.55?'d':desiredX<p.x-.55?'a':null;const needsLift=target.y<p.y-2;if(!horizontal&&target.y>p.y+3&&p.downBlocked)horizontal=desiredX>=p.x?'d':'a';
     if(target.y>p.y+3&&stalled>1800&&Date.now()-lastClear>1400){await page.keyboard.press('2');const aim=await page.evaluate(({x,y})=>__prismara.renderer.screenPoint(x,y),{x:desiredX,y:Math.min(target.y,p.y+24)});await page.mouse.move(aim.x,aim.y);await page.mouse.down();await delay(320);await page.mouse.up();lastClear=Date.now();continue;}
-    if(horizontal)await page.keyboard.down(horizontal);if(needsLift&&p.fuel>8)await page.keyboard.down('Space');await delay(95);if(needsLift)await page.keyboard.up('Space');if(horizontal)await page.keyboard.up(horizontal);await delay(needsLift?35:20);
-    if(Date.now()-lastProgress>9000)throw Error('Normal controls became stuck near '+JSON.stringify({p,target,index}));
+    const stepLift=Boolean(horizontal)&&!p.downBlocked&&stalled>1600&&Math.abs(target.y-p.y)<12&&Date.now()-lastLift>3500&&p.fuel>8,thrust=(needsLift||stepLift)&&p.fuel>8;if(stepLift)lastLift=Date.now();
+    if(horizontal)await page.keyboard.down(horizontal);if(thrust)await page.keyboard.down('Space');await delay(stepLift?210:95);if(thrust)await page.keyboard.up('Space');if(horizontal)await page.keyboard.up(horizontal);await delay(needsLift?35:20);
+    if(Date.now()-lastProgress>9000){const debug=await page.evaluate(({x,y})=>{const g=__prismara,w=g.world,p=g.player,around=[];for(let yy=Math.floor(p.y)-2;yy<=Math.floor(p.y)+12;yy++){let row='';for(let xx=Math.floor(p.x)-4;xx<=Math.floor(p.x)+7;xx++){const i=w.index(xx,yy);row+=w.blocked[i]?'B':w.consolidated[i]?'#':w.cells[i]===0?'.':String(w.cells[i]%10);}around.push([yy,row]);}return {keys:[...g.input.keys],paused:g.paused,panel:g.panel,around,collides:[p['collides'](w,p.x+.5,p.y),p['collides'](w,x+.5,y)]};},{x:target.x,y:target.y});throw Error('Normal controls became stuck near '+JSON.stringify({p,target,index,debug}));}
   }
   const end=await page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,known:__prismara.exploration.discoveredCells.reduce((a,b)=>a+b,0)}));
   assert.equal(index,route.waypoints.length,'normal controls must complete the generated route near '+JSON.stringify({end,target:route.waypoints[index],index,total:route.waypoints.length}));assert.ok(end.y>500,'normal controls must reach the deep connected chamber');
