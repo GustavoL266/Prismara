@@ -48,9 +48,9 @@ O asset não altera células, RNG, tick, personagem ou descoberta. `world.backdr
 
 ## Partida por controles normais
 
-O ensaio usa menu, teclado, mouse, escavação, aspiração, despejo, catálogo e pesquisa. A primeira produção rentável obteve **7 ouro em 22,900 s de simulação**, com 34 unidades úmidas e 111 células liberadas. O ouro financiou Hidráulica, e o jogador construiu uma rede de 864 unidades de capacidade, copiou e removeu um conjunto sem duplicação, girou uma parede, exportou, recarregou e importou o save.
+O ensaio usa menu, teclado, mouse, escavação, aspiração, despejo, catálogo e pesquisa. Na execução final, a primeira produção rentável obteve **7 ouro em 22,533 s de simulação**, com 31 unidades úmidas e 111 células liberadas. O ouro financiou Hidráulica, e o jogador construiu uma rede de 864 unidades de capacidade, copiou e removeu um conjunto sem duplicação, girou uma parede, exportou, recarregou e importou o save.
 
-Depois, uma rota calculada sobre a máscara do corpo foi percorrida com A/D e propulsor reais. O caminho tinha **917 células** e 256 pontos de direção; chegou à câmara inundada em **44,831 s**, na posição aproximada x=394,6, y=622,4. A descoberta terminou com mais de 152 mil células, sem revelar o mapa inteiro. Foram registradas cenas nas profundidades 300, 450 e 600.
+Depois, uma rota calculada sobre a máscara do corpo foi percorrida com A/D, propulsor e aspiração reais. O caminho tinha **916 células** e 50 segmentos fisicamente livres; chegou à câmara inundada em **86,509 s**, na posição aproximada x=394,6, y=620,5. A descoberta terminou com mais de 155 mil células, sem revelar o mapa inteiro. Foram registradas cenas nas profundidades 300, 450 e 600.
 
 ## Três minutos de automação
 
@@ -65,7 +65,7 @@ A instalação foi montada uma vez com depósito consolidado, água finita, sond
 | 150 s | 52 | 225 | 172 |
 | 180 s | 56 | 270 | 205 |
 
-Duração real **180,006 s** e simulada **180,033 s**. A indústria avançada do cenário controlado produziu 202 pelotas, 44 impactos, 47 unidades fundidas e 15 cristais coletados.
+Duração real **180,001 s** e simulada **180,000 s**. A indústria avançada do cenário controlado produziu 202 pelotas, 44 impactos, 47 unidades fundidas e 15 cristais coletados.
 
 ## Desempenho
 
@@ -76,7 +76,7 @@ Ambiente: Windows 10.0.26200, Node 24.19.0, AMD Ryzen 7 5700X, 16 processadores 
 | Mundo gerado | 0,230 ms | 0,341 ms | 0,437 ms | 37,610 ms | 3 MiB |
 | Linha autônoma | 0,613 ms | 0,844 ms | 1,012 ms | 8,301 ms | 3 MiB |
 
-Na execução real do navegador, as seis amostras ficaram em **143,553–144,030 FPS**, simulação em **0,893–0,971 ms** e desenho em **1,413–1,584 ms**. O heap final observado foi 87,302 MiB. FPS e tempos do jogo são médias móveis pontuais, não garantia para outras máquinas ou fábricas muito maiores.
+Na execução final do navegador local, as seis amostras ficaram em **129,140–134,268 FPS**, simulação em **0,587–0,637 ms** e desenho em **1,140–1,183 ms**. O heap final observado foi 87,923 MB. FPS e tempos do jogo são médias móveis pontuais, não garantia para outras máquinas ou fábricas muito maiores.
 
 ## Capturas reais
 
