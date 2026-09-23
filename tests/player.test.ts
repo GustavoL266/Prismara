@@ -48,14 +48,14 @@ test('ceiling collision stops upward flight and zero fuel prevents immediate thr
   assert.equal(player.thrust, false); assert.ok(player.fuel > 0);
 });
 
-test('explorer stays within world and lands on granular piles', () => {
+test('explorer stays within world and passes through settled granular piles and lands on terrain', () => {
   const { world, player } = setup(); advance(world, player, ['KeyA'], 100); assert.ok(player.x >= 5);
   player.x = 30; player.y = 52;
   for (let x = 20; x < 42; x++) world.set(x, 61, Mat.Sand);
-  advance(world, player, [], 30); assert.ok(player.y < 61); assert.equal(player.grounded, true);
+  advance(world, player, [], 30); assert.ok(player.y > 69 && player.y < 70);assert.equal(world.count(Mat.Sand),22); assert.equal(player.grounded, true);
 });
 
-test('explorer climbs the small grain-sized steps of a sand dune without getting stuck', () => {
+test('explorer walks through a sand dune without climbing or deleting grains', () => {
   const { world, player } = setup();
   for (let x = 25; x < 80; x++) {
     const surface = 69 - Math.min(12, Math.floor((x - 25) / 3));
@@ -64,5 +64,5 @@ test('explorer climbs the small grain-sized steps of a sand dune without getting
   player.x = 27; player.y = 68;
   advance(world, player, ['KeyD'], 35);
   assert.ok(player.x > 62, `stuck at x=${player.x}`);
-  assert.ok(player.y < 59, `did not climb dune y=${player.y}`);
+  assert.ok(player.y >=69 && player.y <70, `loose grains incorrectly supported y=${player.y}`);
 });

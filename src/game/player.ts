@@ -1,6 +1,9 @@
-import { Mat, materials } from '../sim/materials';
+import { blocksPlayer } from '../sim/player-collision';
 import type { World } from '../sim/world';
-export const PLAYER_BODY={halfWidth:2,height:9,bootRows:2} as const;
+export const PLAYER_BODY={halfWidth:2,height:9} as const;
+export function playerOverlaps(px:number,py:number,solid:(x:number,y:number)=>boolean):boolean {
+  for(let y=Math.floor(py-PLAYER_BODY.height+1);y<=Math.floor(py);y++)for(let x=Math.floor(px-PLAYER_BODY.halfWidth);x<=Math.floor(px+PLAYER_BODY.halfWidth);x++)if(solid(x,y))return true;return false;
+}
 export class Player {
   x = 130; y = 151; vx = 0; vy = 0; facing = 1; grounded = false; thrust = false; fuel = 100;
   propulsion = 0;
@@ -21,17 +24,6 @@ export class Player {
     for (let step = 0; step < steps; step++) {
       const nx = this.x + dx / steps, ny = this.y + dy / steps;
       if (this.collides(world, nx, ny)) {
-        // A dune is a staircase of individual cells. Lift the boots over small steps
-        // while supported, without allowing wall climbing or airborne snapping.
-        if (dx && !this.thrust && (this.grounded || this.collides(world, this.x, this.y + 1))) {
-          let climbed = false;
-          for (let rise = 1; rise <= 2; rise++) {
-            if (!this.collides(world, this.x, ny - rise) && !this.collides(world, nx, ny - rise)) {
-              this.x = nx; this.y = ny - rise; climbed = true; break;
-            }
-          }
-          if (climbed) continue;
-        }
         if (dy > 0) this.grounded = true;
         if (dy) this.vy = 0;
         return;
@@ -40,12 +32,6 @@ export class Player {
     }
   }
   private collides(world: World, px: number, py: number): boolean {
-    for (let y = Math.floor(py - PLAYER_BODY.height+1); y <= Math.floor(py); y++) for (let x = Math.floor(px - PLAYER_BODY.halfWidth); x <= Math.floor(px + PLAYER_BODY.halfWidth); x++) {
-      const material = world.get(x, y);
-      if (!world.inBounds(x, y) || world.blocked[world.index(x, y)] || materials[material].state === 'terrain' ||
-        world.consolidated[world.index(x,y)] ||
-        material === Mat.Wall || (y > py - PLAYER_BODY.bootRows && materials[material].state === 'granular')) return true;
-    }
-    return false;
+    return playerOverlaps(px,py,(x,y)=>blocksPlayer(world,x,y));
   }
 }

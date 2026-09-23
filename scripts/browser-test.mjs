@@ -1,3 +1,5 @@
+import {manualCampaign} from './browser-manual.mjs';
+import {validateModuleMigration} from './browser-migration.mjs';
 import assert from 'node:assert/strict';
 import {existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -51,78 +53,10 @@ try{
   await page.locator('#seed').fill('91207');await page.locator('[data-action="new"]').click();await delay(1100);
   await screenshot('01-inicio');pass('New seeded deep world through normal menu',{dimensions:await page.evaluate(()=>[__prismara.world.width,__prismara.world.height])});
   await validateSurfaceBackground(page,screenshot,pass);
-  const position=()=>page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,fuel:__prismara.player.fuel}));
-  const start=await position();await page.keyboard.down('d');await delay(500);await page.keyboard.up('d');const moved=await position();assert.ok(moved.x>start.x+8);
-  await page.keyboard.down('a');await delay(200);await page.keyboard.up('a');await page.keyboard.down('Space');await delay(400);await page.keyboard.up('Space');
-  const flew=await position();assert.ok(flew.y<start.y-5&&flew.fuel<100);await delay(1200);pass('Normal movement and propulsion',{start,moved,flew});
-  for(const x of [152,159,166]){
-    const before=(await inventory())[1];await page.keyboard.press('1');await hold(x,175,400);
-    assert.equal((await inventory())[1],before,'digging must leave particles in world');
-    await page.keyboard.press('2');await hold(x,175,450);assert.ok((await inventory())[1]>before,'aspiration must collect released grains');
-  }
-  pass('Dig releases real terrain; separate normal aspiration collects grains',{sand:(await inventory())[1]});
-  const sieve=await build('sieve',166,128);const collector=await build('collector',168,146);await build('belt',190,128);
-  await page.keyboard.down('d');await delay(500);await page.keyboard.up('d');await delay(500);
-  // Mix in the finite natural basin first; no assigned particles, inventory or recipe counters.
-  await material(1);await hold(207,165,1050);await delay(2400);
-  assert.ok(await page.evaluate(()=>__prismara.world.reactionCounts.wet>=40));
-  await material(17);await page.keyboard.press('2');await page.keyboard.down('Shift');
-  for(const x of [198,204,210,216])await hold(x,175,500);
-  await page.keyboard.up('Shift');
-  for(let attempt=0;attempt<4&&(await inventory())[17]<35;attempt++){
-    const pockets=await page.evaluate(()=>{const g=__prismara,bins=new Map();for(let y=150;y<=205;y++)for(let x=190;x<=226;x++)if(g.world.get(x,y)===17&&Math.hypot(x-g.player.x,y-g.player.y)<=g.reach-3){const key=`${Math.floor(x/5)},${Math.floor(y/5)}`,bin=bins.get(key)??{x:0,y:0,count:0};bin.x+=x;bin.y+=y;bin.count++;bins.set(key,bin);}return [...bins.values()].sort((a,b)=>b.count-a.count).slice(0,12).map(b=>({x:Math.round(b.x/b.count),y:Math.round(b.y/b.count)}));});
-    if(pockets.length){await page.keyboard.press('2');await page.keyboard.down('Shift');for(const p of pockets){if((await inventory())[17]>=35)break;await hold(p.x,p.y,220);}await page.keyboard.up('Shift');}
-    if((await inventory())[17]<35){await material(1);await hold(207,165,700);await delay(1400);await material(17);}
-  }
-  assert.ok((await inventory())[17]>=35,'normal basin must provide enough wet sand');
-  const wet=(await inventory())[17];await material(17);await hold(177,124,Math.ceil(wet/60*1000)+300);await delay(4000);
-  // Small batches have variable mineral yield. Replenish by the same normal actions if needed.
-  for(let batch=0;batch<3&&await page.evaluate(()=>__prismara.factory.gold)<6;batch++){
-    await material(1);await hold(207,165,800);await delay(1800);await material(17);await page.keyboard.press('2');await page.keyboard.down('Shift');
-    for(const x of [198,204,210,216])await hold(x,175,500);await page.keyboard.up('Shift');
-    const more=(await inventory())[17];assert.ok(more>0);await material(17);await hold(177,124,Math.ceil(more/60*1000)+300);await delay(3500);
-  }
-  const first=await page.evaluate(()=>({gold:__prismara.factory.gold,wet:__prismara.factory.counters.wet,elapsed:__prismara.progress.elapsed,mined:__prismara.progress.mined}));
-  assert.ok(first.gold>=6,'first physical gold should finance hydraulics');assert.ok(first.elapsed<180,'first gold target: under three minutes with normal controls');
-  pass('Fresh normal-control campaign produces spendable gold without inspector feeds',first);
-  await page.keyboard.press('1');await hold(175,150,80);await screenshot('02-primeira-fabrica');
-  await page.keyboard.press('t');await screenshot('05-pesquisa');
-  const goldBefore=await page.evaluate(()=>__prismara.factory.gold);await page.locator('[data-research="liquids"]').click();
-  assert.equal(await page.evaluate(()=>__prismara.factory.gold),goldBefore-6);await page.keyboard.press('Escape');
-  pass('Normal gold-funded research unlocks an independent liquids branch');
-  // Explore the group placement footprint using movement before building there.
-  await page.keyboard.down('d');await page.keyboard.down('Space');await delay(1500);await page.keyboard.up('d');await page.keyboard.up('Space');
-  await page.keyboard.down('a');await delay(1500);await page.keyboard.up('a');await delay(1800);
-  await delay(1400);const sandBeforeCopy=(await inventory())[1];await page.keyboard.press('5');await dragArea(164,126,188,160);
-  assert.equal(await page.evaluate(()=>__prismara.selection.size),2);await page.keyboard.press('c');await page.keyboard.press('v');await hold(250,108,100);
-  assert.ok(await page.evaluate(()=>__prismara.factory.machines.some(m=>m.kind==='sieve'&&m.x===250&&m.y===108)));assert.equal((await inventory())[1],sandBeforeCopy-10);
-  await dragArea(248,106,278,142,true);assert.equal((await inventory())[1],sandBeforeCopy);
-  await page.keyboard.press('b');await page.locator('[data-machine="wall"]').click();await page.keyboard.press('r');await hold(250,106,100);
-  const rotated=await page.evaluate(()=>__prismara.factory.machines.find(m=>m.kind==='wall'&&m.x===250&&m.y===106));assert.equal(rotated.rotation,1);assert.deepEqual([rotated.w,rotated.h],[16,2]);
-  await dragArea(248,104,268,112,true);assert.equal((await inventory())[1],sandBeforeCopy);pass('Normal area selection, configuration copy, paid group placement, rotation and removal preserve resources');
-  // Reserve actual mined construction stock after any extra wetting batch.
-  for(const x of [152,159,166])if((await inventory())[1]<32){await page.keyboard.press('1');await hold(x,184,400);await page.keyboard.press('2');await hold(x,184,500);}
-  assert.ok((await inventory())[1]>=24);await delay(1200);await build('pump',196,166);
-  for(const x of [192,188,184,180,176])await build('pipe',x,166);
-  for(let y=162;y>=122;y-=4)await build('pipe',176,y);
-  await build('valve',176,118);
-  await screenshot('03-fabrica-etapas');
-  const net=await page.evaluate(()=>__prismara.factory.pipes.inspect(__prismara.factory.machines.find(m=>m.kind==='pump').id));
-  assert.ok(net.capacity>=48*18);pass('Normal construction makes a connected physical hydraulic network',net);
-  for(const [width,height] of [[1280,720],[1920,1080]]){await page.setViewportSize({width,height});await delay(200);pass('HUD fits without overlaps '+width+'x'+height,await assertHUD());}
-  await page.setViewportSize({width:1280,height:720});
-  // Pause, export, and restore from IndexedDB: exact snapshot before the first resumed tick.
-  await page.keyboard.press('Escape');await page.locator('[data-action="save"]').click();await page.waitForFunction(()=>__prismara.saveLabel==='Salvo neste navegador');
-  const snapshot=await page.evaluate(async()=>{const {readSave}=await import('/src/game/save.ts');return await readSave();});
-  const download=page.waitForEvent('download');await page.locator('[data-action="export"]').click();const exported=await download;assert.ok(exported.suggestedFilename().endsWith('.prismara'));await exported.saveAs(resolve(artifacts,'export.prismara'));
-  const before=JSON.parse(snapshot);await page.reload({waitUntil:'networkidle'});await page.locator('[data-action="continue"]').click();
-  await page.waitForFunction(()=>__prismara.started);await page.keyboard.press('Escape');
-  const after=await page.evaluate(()=>({gold:__prismara.factory.gold,inventory:__prismara.inventory,research:__prismara.progress.researched,machines:__prismara.factory.machines.length}));
-  assert.equal(after.gold,before.credits.gold);assert.deepEqual(after.inventory,before.inventory);assert.deepEqual(after.research,before.progress.researched);assert.equal(after.machines,before.machines.length);
-  pass('Async save, reload, Continue and portable export preserve progress and inventory',after);
-  await page.locator('#save-import').setInputFiles(resolve(artifacts,'export.prismara'));await page.waitForFunction(()=>document.querySelector('#toast')?.textContent==='Partida importada e validada.');await page.keyboard.press('Escape');
-  const imported=await page.evaluate(()=>({gold:__prismara.factory.gold,inventory:__prismara.inventory,research:__prismara.progress.researched,machines:__prismara.factory.machines.length}));assert.deepEqual(imported,after);pass('Portable file import restores the exported physical installation');
-  await page.locator('#ui-scale').focus();await page.keyboard.press('End');await page.keyboard.press('Escape');await delay(200);await page.keyboard.press('1');await hold(175,150,80);pass('Maximum UI scale with contextual inspector stays in view',await assertHUD());
+  await manualCampaign(page,{build,hold,dragArea,screenshot,pass,assertHUD,artifacts});
+  const campaignSave=await page.evaluate(async()=>{const {readSave}=await import('/src/game/save.ts');return await readSave();});
+  if(!process.env.PRISMARA_BOOTSTRAP_ONLY){
+  await validateModuleMigration(page,{hold,pass});
   // Independent automation rig on a full-size world. Installed once; raw materials only.
   await page.evaluate(async()=>{
     const [{World},{Factory},{installLine},{Exploration}]=await Promise.all([import('/src/sim/world.ts'),import('/src/sim/machines.ts'),import('/tests/fixtures/line.ts'),import('/src/game/exploration.ts')]);
@@ -156,9 +90,9 @@ try{
   });
   assert.ok(advanced.crystals>=8&&advanced.counters.impacts>=30);await screenshot('07-industria-avancada');pass('Physical advanced factory with impact energy, ceramics, molten glass and rare collection',advanced);
   // Actual generated subterranean rendering; follow the generated player-body route with normal controls.
-  await page.evaluate(()=>{__prismara.newWorld(91207);__prismara.preferences.uiScale=1;});
-  await traverseGeneratedGallery(page,screenshot,pass);
+  await page.evaluate(raw=>{__prismara.restore(raw);__prismara.preferences.uiScale=1;},campaignSave);
   await validateExploration(page,screenshot,pass);
+  }
   assert.deepEqual(report.consoleErrors,[]);pass('No browser JavaScript or console errors');report.ok=true;
 }catch(error){
   report.ok=false;report.error=error.stack??String(error);console.error(error);process.exitCode=1;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world';
 import { Mat } from '../src/sim/materials';
-import { Factory, RECIPES } from '../src/sim/machines';
+import { Factory, RECIPES, feedPoint, outlet } from '../src/sim/machines';
 import { Energy, ENERGY } from '../src/sim/energy';
 
 const setup = () => { const world = new World(128, 100, 4103); return { world, factory: new Factory(world) }; };
@@ -14,8 +14,8 @@ test('separator conserves every pulp grain as clay and adds the configured quart
     world.tick = i * RECIPES.separator.every;
     world.set(m.x + 3, m.y - 1, Mat.Pulp);
     factory.step();
-    assert.equal(world.get(m.x + m.w, m.y + m.h - 3), Mat.Clay);
-    world.set(m.x + m.w, m.y + m.h - 3, Mat.Air);
+    assert.equal(world.get(m.x + m.w, m.y + 4), Mat.Clay);
+    world.set(m.x + m.w, m.y + 4, Mat.Air);
     world.set(m.x + Math.floor(m.w / 2), m.y + m.h, Mat.Air);
   }
   assert.equal(factory.counters.clay, 300);
@@ -26,7 +26,7 @@ test('separator conserves every pulp grain as clay and adds the configured quart
 test('blocked separator output preserves input material', () => {
   const { world, factory } = setup(); const m = factory.add('separator', 30, 20)!;
   world.set(m.x + 3, m.y - 1, Mat.Pulp);
-  world.set(m.x + m.w, m.y + m.h - 3, Mat.Rock);
+  world.set(m.x + m.w, m.y + 4, Mat.Rock);
   factory.step();
   assert.equal(world.get(m.x + 3, m.y - 1), Mat.Pulp);
   assert.equal(m.status, 'Saída bloqueada');
@@ -36,7 +36,7 @@ test('kiln bootstraps pellets on slow solar heat without electrical energy', () 
   const { world, factory } = setup(); const m = factory.add('kiln', 30, 20)!;
   factory.energy.value = 0; world.tick = RECIPES.kiln.solarEvery;
   world.set(m.x + 3, m.y - 1, Mat.Clay); factory.step();
-  assert.equal(world.get(m.x + m.w, m.y + m.h - 3), Mat.Pellet);
+  assert.equal(world.get(m.x + m.w, m.y + 4), Mat.Pellet);
   assert.equal(factory.energy.value, 0);
 });
 
@@ -48,7 +48,7 @@ test('piezo requires a physical fall of 18 cells; weak pellets stay on the press
   assert.equal(factory.counters.impacts, 0);
   world.fall[world.index(m.x + 3, m.y - 1)] = 18; factory.step();
   assert.equal(world.get(m.x + 3, m.y - 1), Mat.Air);
-  assert.equal(world.get(m.x + m.w, m.y + m.h - 1), Mat.Shard);
+  assert.equal(world.get(m.x + m.w, m.y + 4), Mat.Shard);
   assert.equal(factory.energy.value, ENERGY.initial + ENERGY.impact);
   assert.equal(factory.counters.impacts, 1);
 });
@@ -99,7 +99,7 @@ test('sealed or structurally blocked gas outlet preserves quartz and energy', ()
     const { world, factory } = setup(); const m = factory.add('crucible', 30, 20)!;
     const ox = m.x + Math.floor(m.w / 2), oy = m.y + m.h;
     world.set(m.x + 3, m.y - 1, Mat.Quartz);
-    if (solidMachine) assert.ok(factory.add('belt', m.x, oy));
+    if (solidMachine) assert.ok(factory.add('block', m.x, oy));
     else for (const [dx, dy] of [[0, 1], [-1, 0], [1, 0]]) world.set(ox + dx, oy + dy, Mat.Wall);
     world.set(ox, oy, Mat.Mist, -45);
     const energyBefore = factory.energy.value;
@@ -113,21 +113,19 @@ test('sealed or structurally blocked gas outlet preserves quartz and energy', ()
 test('removing machine support wakes a settled sleeping pile', () => {
   const { world, factory } = setup(); const belt = factory.add('belt', 30, 30)!;
   belt.enabled = false;
-  world.set(37, 29, Mat.Sand);
+  world.set(34, 34, Mat.Sand);
   for (let i = 0; i < 30; i++) { factory.step(); world.step(); }
-  assert.equal(world.get(37, 29), Mat.Sand);
-  assert.equal(world.active[1 * world.chunksX + 2], 0);
+  assert.equal(world.get(34, 34), Mat.Sand);
+  assert.equal(world.active[2 * world.chunksX + 2], 0);
   assert.equal(factory.remove(belt.id), true);
   world.step();
-  assert.equal(world.get(37, 30), Mat.Sand);
+  assert.equal(world.get(34, 35), Mat.Sand);
 });
 
 test('mist consumes physical water and emits a cold gas in the chosen direction', () => {
   const { world, factory } = setup(); const m = factory.add('mist', 30, 20, 1)!;
-  world.set(m.x + 3, m.y - 1, Mat.Water); factory.step();
-  assert.equal(world.get(m.x + 3, m.y - 1), Mat.Air);
-  assert.equal(world.get(m.x + m.w, m.y), Mat.Mist);
-  assert.ok(world.temperature[world.index(m.x + m.w, m.y)] < 0);
+  const p=feedPoint(m),out=outlet(m);world.set(p.x,p.y,Mat.Water);factory.step();
+  assert.equal(world.get(p.x,p.y),Mat.Air);assert.equal(world.get(out.x,out.y),Mat.Mist);assert.ok(world.temperature[world.index(out.x,out.y)]<0);
 });
 
 test('only physical crystals inside vaults fund research, and spending removes them', () => {
@@ -143,20 +141,20 @@ test('only physical crystals inside vaults fund research, and spending removes t
 test('density gate drops accepted grains and conveys rejected grains', () => {
   const { world, factory } = setup(); const m = factory.add('filter', 30, 20)!;
   m.mode = 'density'; m.densityMin = 200; m.densityMax = 260;
-  world.set(35, 19, Mat.Quartz); world.set(40, 19, Mat.Sand); factory.step();
-  assert.equal(world.get(35, 20), Mat.Quartz,'accepted grains enter the grille instead of teleporting to its bottom');
-  assert.equal(world.get(41, 19), Mat.Sand);
+  world.set(33, 24, Mat.Quartz); world.set(35, 24, Mat.Sand); factory.step();
+  assert.equal(world.get(33, 25), Mat.Quartz,'accepted grains enter the grille instead of teleporting to its bottom');
+  assert.equal(world.get(36, 24), Mat.Sand);
   for(let i=0;i<5;i++){world.step();factory.step();}
-  assert.equal(world.get(35,25),Mat.Quartz);
+  assert.equal(world.get(33,30),Mat.Quartz);
 });
 
 test('disconnected pipes retain separate liquids; a connected valve returns physical liquid', () => {
   const { world, factory } = setup();
   const a = factory.add('pump', 10, 20)!;
-  factory.add('pipe', 16, 20)!; factory.add('valve', 20, 20)!;
+  factory.add('pipe', 18, 20)!; factory.add('valve', 26, 20)!;
   const b = factory.add('pump', 50, 20)!;
-  world.set(9, 20, Mat.Water); world.set(49, 20, Mat.Pulp); factory.step();
-  assert.equal(world.get(22, 24), Mat.Water);
+  world.set(14, 19, Mat.Water); world.set(54, 19, Mat.Pulp); factory.step();
+  assert.equal(world.get(30, 28), Mat.Water);
   assert.equal(factory.pipes.inspect(a.id).count, 0);
   assert.equal(factory.pipes.inspect(b.id).material, Mat.Pulp);
   assert.equal(factory.pipes.inspect(b.id).count, 1);

@@ -1,3 +1,4 @@
+import {globalCell} from './module-geometry';
 import { Mat } from './materials';
 import type { World } from './world';
 import type { Machine } from './machines';
@@ -7,7 +8,8 @@ export function updateSignals(world: World, machines: Machine[]): void {
   for (const m of machines) m.signal = true;
   for (const sensor of machines.filter(m => m.kind === 'sensor')) {
     let found = false;
-    for (let y = sensor.y - 9; y < sensor.y; y++) for (let x = sensor.x - 4; x < sensor.x + sensor.w + 4; x++) {
+    for (let row = -9; row < 0; row++) for (let col = -4; col < sensor.w + 4; col++) {
+      const {x,y}=globalCell(sensor,col,row);
       const material = world.get(x, y);
       if (material !== Mat.Air && (sensor.filter === Mat.Air || material === sensor.filter)) found = true;
     }

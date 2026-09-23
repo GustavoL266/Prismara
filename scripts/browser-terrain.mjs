@@ -49,7 +49,6 @@ export async function traverseGeneratedGallery(page,screenshot,pass){
     if(xAligned&&Math.abs(target.y-p.y)<=2.5){index++;lastProgress=Date.now();best=Infinity;continue;}if(distance<best-1){best=distance;lastProgress=Date.now();}
     for(const depth of [300,450,600])if(p.y>=depth&&!captured.has(depth)){captured.add(depth);await screenshot('15-percurso-'+depth);}
     const stalled=Date.now()-lastProgress;let horizontal=desiredX>p.x+.55?'d':desiredX<p.x-.55?'a':null;const needsLift=target.y<p.y-2;if(!horizontal&&target.y>p.y+3&&p.downBlocked)horizontal=desiredX>=p.x?'d':'a';
-    if(target.y>p.y+3&&stalled>1800&&Date.now()-lastClear>1400){await page.keyboard.press('2');const aim=await page.evaluate(({x,y})=>__prismara.renderer.screenPoint(x,y),{x:desiredX,y:Math.min(target.y,p.y+24)});await page.mouse.move(aim.x,aim.y);await page.mouse.down();await delay(320);await page.mouse.up();lastClear=Date.now();continue;}
     const stepLift=Boolean(horizontal)&&p.sideBlocked&&stalled>1200&&Math.abs(target.y-p.y)<12&&Date.now()-lastLift>3500&&p.fuel>8,thrust=(needsLift||stepLift)&&p.fuel>8;if(stepLift)lastLift=Date.now();
     const pressMs=stepLift?210:horizontal?Math.max(35,Math.min(95,Math.abs(desiredX-p.x)/36*1000)):95;
     if(horizontal)await page.keyboard.down(horizontal);if(thrust)await page.keyboard.down('Space');await delay(pressMs);if(thrust)await page.keyboard.up('Space');if(horizontal)await page.keyboard.up(horizontal);await delay(needsLift?35:20);

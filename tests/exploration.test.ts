@@ -13,7 +13,7 @@ import { FogBoundary } from '../src/render/fog';
 
 const game=():Saveable=>{
  const world=new World(320,320,128),factory=new Factory(world),player=Object.assign(new Player(),{x:100,y:110});
- const exploration=new Exploration(world);exploration.update(player.x,player.y);
+ const exploration=new Exploration(world);exploration.revealSurface();exploration.update(player.x,player.y);
  return {world,factory,player,exploration,inventory:Array(materials.length).fill(0),progress:{mined:0,mixed:0,crystalsMade:0,tier:1,ruins:false,won:false,elapsed:0,mission:0,researched:[],discovered:[0,1,2,3,4,5]},preferences:{volume:0,shake:false,zoom:3}};
 };
 test('initial discovery exactly matches the requested world-space circle, including solid terrain',()=>{
@@ -72,12 +72,12 @@ test('v4 roundtrip retains knowledge, old map information, preferences, points a
  assert.deepEqual(restored.exploration!.map,e.map);assert.deepEqual(restored.world.visualVariant,g.world.visualVariant);assert.deepEqual(restored.world.backdrop,g.world.backdrop);
 });
 for(const version of [1,2])test('migration v'+version+' reveals only the player neighborhood and existing machine footprints',()=>{
- const g=game();g.factory.add('belt',270,270);const raw=JSON.parse(serialize(g));raw.version=version;delete raw.exploration;delete raw.world.visualVariant;delete raw.world.backdrop;
- const r=deserialize(JSON.stringify(raw)),e=r.exploration!;assert.equal(e.knows(100,110),true);assert.equal(e.knows(275,271),true);assert.equal(e.knows(230,170),false);assert.equal(e.knows(310,20),false);
- assert.ok(e.discoveredCells.reduce((a,b)=>a+b,0)<320*320/3);
+ const g=game();g.factory.add('belt',270,270);const raw=JSON.parse(serialize(g));raw.machines[0].w=16;raw.machines[0].h=3;raw.version=version;delete raw.exploration;delete raw.world.visualVariant;delete raw.world.backdrop;
+ const r=deserialize(JSON.stringify(raw)),e=r.exploration!;assert.equal(e.knows(100,110),true);assert.equal(e.knows(275,271),true);assert.equal(e.knows(230,170),false);assert.equal(e.knows(310,20),true);
+ assert.ok(e.discoveredCells.reduce((a,b)=>a+b,0)<320*320*.6);
 });
 test('discovery names cannot reveal the region and a fresh expedition cannot inherit another map',()=>{
- const g=game();g.exploration!.update(275,275);const r=deserialize(serialize(g));assert.equal(r.progress.discovered!.length,6);assert.equal(r.exploration!.knows(310,20),false);
+ const g=game();g.exploration!.update(275,275);const r=deserialize(serialize(g));assert.equal(r.progress.discovered!.length,6);assert.equal(r.exploration!.knows(310,20),true);
  const fresh=new Exploration(new World(320,320,128));fresh.update(100,110);assert.equal(fresh.knows(275,275),false);
 });
 test('cartography rejects malformed lengths, unknown material and concealed chamber markers',()=>{
@@ -86,7 +86,7 @@ test('cartography rejects malformed lengths, unknown material and concealed cham
 });
 test('unobserved factories keep producing and cannot rewrite remote cartographic memory',()=>{
  const w=new World(512,320,3),f=new Factory(w),s=f.add('sieve',360,220)!,c=f.add('collector',360,240)!,e=new Exploration(w);e.update(80,110);
- w.rng=()=>0;w.set(s.x+6,s.y-1,Mat.WetSand);
+ w.rng=()=>0;w.set(s.x+4,s.y+4,Mat.WetSand);
  for(let i=0;i<100;i++){f.step();w.step();e.update(80,110);}
  assert.ok(f.gold>0);assert.equal(e.knows(c.x,c.y),false);assert.equal(e.rememberedMaterial[w.index(s.x+6,s.y-1)],Mat.Air);
 });
@@ -101,6 +101,6 @@ test('edge changes invalidate adjacent visual chunks without waking physics on p
 });
 test('pipe sprite branches agree with the actual fluid adjacency and do not connect sensors',()=>{
  const w=new World(128,128,3),f=new Factory(w),m=f.add('pipe',40,40)!;
- f.add('pipe',36,40);f.add('pump',44,40);f.add('pipe',40,36);f.add('sensor',40,44);
+ f.add('pipe',32,40);f.add('pump',48,40);f.add('pipe',40,32);f.add('sensor',40,48);
  assert.deepEqual(pipeConnections(m,f.machines),{left:true,right:true,up:true,down:false});assert.equal(f.pipes.inspect(m.id).capacity,48*4);
 });

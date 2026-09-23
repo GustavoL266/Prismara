@@ -11,11 +11,12 @@ type Feed = { machine: Machine; material: Mat; remaining: number };
 function advance(world: World, factory: Factory, ticks: number, feeds: Feed[] = [], inventory?: number[]) {
   for (let tick = 0; tick < ticks; tick++) {
     if (world.tick % 3 === 0) for (const feed of feeds) {
+      if(feed.machine.kind==='sieve'&&world.tick%9)continue;
       if (feed.remaining < 1 || inventory && inventory[feed.material] < 1) continue;
       const p = feedPoint(feed.machine);
       if (feed.machine.kind === 'press') p.y = feed.machine.y - 26;
       for (const dx of [0, -1, 1, -2, 2]) {
-        const x = p.x + dx, y = p.y;
+        const x = p.x + (feed.machine.rotation%2?0:dx), y = p.y + (feed.machine.rotation%2?dx:0);
         if (world.get(x, y) !== Mat.Air || world.blocked[world.index(x, y)]) continue;
         world.set(x, y, feed.material); feed.remaining--;
         if (inventory) inventory[feed.material]--;
@@ -34,11 +35,11 @@ function harvest(world: World, inventory: number[], requested: Mat[]) {
 }
 
 function thermalModule(world: World, factory: Factory) {
-  const c = factory.add('crucible', 210, 102)!;
-  const m = factory.add('mist', 219, 114, 3)!;
-  assert.ok(c && m);
+  const c = factory.add('crucible', 208, 104)!;
+  const m = factory.add('mist', 216, 112, 1)!;
+  assert.ok(c && m);const filter=factory.add('filter',208,112)!;filter.mode='density';filter.densityMin=175;filter.densityMax=260;factory.rebuildBlocks();for(let y=112;y<118;y++)world.set(207,y,Mat.Wall);
   for (let x = 208; x <= 234; x++) world.set(x, 135, Mat.Wall);
-  for (let y = 114; y < 135; y++) { world.set(208, y, Mat.Wall); world.set(234, y, Mat.Wall); }
+  for (let y = 120; y < 135; y++) { world.set(208, y, Mat.Wall); world.set(234, y, Mat.Wall); }
   for (let y = 111; y < 114; y++) world.set(225, y, Mat.Wall);
   return { c, m };
 }
@@ -81,8 +82,8 @@ test('wet sand funds basic research with gold before the advanced ceramic energy
   advance(world, factory, 120);
   harvest(world, inventory, [Mat.WetSand, Mat.Water, Mat.Sand]);
   assert.equal(inventory[Mat.WetSand],400);
-  const sieve=factory.add('sieve',30,30)!;
-  advance(world,factory,2400,[{machine:sieve,material:Mat.WetSand,remaining:400}],inventory);
+  const sieve=factory.add('sieve',30,30)!;for(let y=29;y<35;y++){world.set(29,y,Mat.Wall);world.set(38,y,Mat.Wall);}
+  advance(world,factory,4800,[{machine:sieve,material:Mat.WetSand,remaining:400}],inventory);
   harvest(world,inventory,[Mat.Residue,Mat.Gold]);
   assert.equal(inventory[Mat.Residue]+world.count(Mat.WetSand),400,'overflow grains stay physical instead of being deleted');
   assert.equal(factory.counters.wet,inventory[Mat.Residue]);assert.ok(inventory[Mat.Gold]>=70);

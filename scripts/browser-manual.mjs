@@ -1,0 +1,46 @@
+import {traverseGeneratedGallery} from './browser-terrain.mjs';
+import assert from 'node:assert/strict';
+import {setTimeout as delay} from 'node:timers/promises';
+/** Only normal keys and pointer actions mutate the campaign. Reads choose visible targets. */
+export async function manualCampaign(page,{build,hold,dragArea,screenshot,pass,assertHUD,artifacts}){
+ const state=()=>page.evaluate(()=>({x:__prismara.player.x,y:__prismara.player.y,load:__prismara.manualLoad,gold:__prismara.factory.gold}));
+ const aim=async(x,y)=>{const p=await page.evaluate(({x,y})=>__prismara.renderer.screenPoint(x+.5,y+.5),{x,y});await page.mouse.move(p.x,p.y);};
+ const fly=async(x,y)=>{const until=Date.now()+16000;while(Date.now()<until){const p=await state(),dx=x-p.x,dy=y-p.y;if(Math.abs(dx)<1.8&&Math.abs(dy)<2.5)break;const horizontal=Math.abs(dx)>1.4?(dx>0?'d':'a'):null,thrust=p.y>y-1;if(horizontal)await page.keyboard.down(horizontal);if(thrust)await page.keyboard.down('Space');await delay(60);if(horizontal)await page.keyboard.up(horizontal);if(thrust)await page.keyboard.up('Space');}
+ const p=await state();assert.ok(Math.abs(p.x-x)<4&&Math.abs(p.y-y)<5,'Flight target '+JSON.stringify({p,x,y}));};
+ const best=async(mat)=>page.evaluate(async(mat)=>{const g=__prismara,{toolReachable,gripBounds}=await import('/src/game/manipulator.ts');let best=null;
+  for(let y=Math.max(0,Math.floor(g.player.y)-25);y<Math.min(g.world.height,g.player.y+45);y++)for(let x=Math.max(0,Math.floor(g.player.x)-45);x<Math.min(g.world.width,g.player.x+45);x++){
+   if(g.world.get(x,y)!==mat||g.world.consolidated[g.world.index(x,y)]||!toolReachable(g,x,y))continue;let count=0;const b=gripBounds(x,y);
+   for(let yy=b.y;yy<b.y+5;yy++)for(let xx=b.x;xx<b.x+5;xx++)if(g.world.get(xx,yy)===mat&&toolReachable(g,xx,yy))count++;
+   if(!best||count>best.count)best={x,y,count};
+  }return best;},mat);
+ const pick=async(mat)=>{let p=await best(mat);for(let attempt=0;!p&&mat===1&&attempt<3;attempt++){const explorer=await state();await page.keyboard.press('1');await hold(Math.floor(explorer.x),Math.floor(explorer.y)+1,450);p=await best(mat);}assert.ok(p,'No reachable manual material '+mat+' '+JSON.stringify(await state()));await page.keyboard.press('2');await aim(p.x,p.y);await page.mouse.down();await delay(60);const loaded=await state();assert.ok(loaded.load.pixels.length>0,'Manual press must pick pixels');assert.equal(loaded.load.material,mat);return loaded.load.pixels.length;};
+ const drop=async(x,y)=>{await aim(x,y);await page.mouse.up();await delay(120);const s=await state();assert.equal(s.load.pixels.length,0,'Drop must release the transported portion '+JSON.stringify(s));};
+ await page.keyboard.press('7');assert.equal(await page.evaluate(()=>__prismara.tool),'dig');assert.equal(await page.locator('[data-tool="vacuum"]').isDisabled(),true);pass('New campaign blocks the vacuum in both shortcut and toolbar');
+ await page.keyboard.down('d');await delay(680);await page.keyboard.up('d');await delay(300);
+ await build('sieve',136,144);await build('collector',136,160);await build('belt',144,144);
+ for(let batch=0;batch<10&&(await state()).gold<6;batch++){
+  await fly(160,159);await page.keyboard.down('a');await delay(150);await page.keyboard.up('a');await delay(1300);await page.keyboard.press('1');const inventory=await page.evaluate(()=>__prismara.inventory[1]);await hold(154,175+batch*4,650);
+  assert.equal(await page.evaluate(()=>__prismara.inventory[1]),inventory,'Digging leaves physical particles');
+  const dry=await pick(1);if(batch===0)await screenshot('17-manipulador-carga');await fly(160,160);await fly(160,145);await fly(207,145);await drop(207,159);await delay(1800);
+  const wet=await pick(17);await fly(207,145);await fly(172,145);await drop(140,144);await delay(2200);
+  console.log('MANUAL batch '+batch+' '+JSON.stringify({dry,wet,...await state()}));
+ }
+ const first=await page.evaluate(()=>({gold:__prismara.factory.gold,wet:__prismara.factory.counters.wet,mined:__prismara.progress.mined,elapsed:__prismara.progress.elapsed,vacuum:__prismara.hasResearch('vacuum'),stock:__prismara.inventory[1]}));
+ assert.ok(first.gold>=6);assert.equal(first.vacuum,false);assert.ok(first.elapsed<180,'Manual first gold must remain a short introductory route');pass('First gold using digging and physical manual portions through the natural water basin',first);await screenshot('02-primeira-fabrica');
+ await page.keyboard.press('t');await screenshot('05-pesquisa');await page.locator('[data-research="vacuum"]').click();await page.keyboard.press('Escape');await page.keyboard.press('7');assert.equal(await page.evaluate(()=>__prismara.tool),'vacuum');assert.equal(await page.locator('[data-tool="vacuum"]').isDisabled(),false);pass('Earned gold unlocks continuous vacuum while retaining the manual tool');
+ await fly(154,158);await delay(900);await page.keyboard.press('1');const floorBeforeVacuum=await state();await hold(Math.floor(floorBeforeVacuum.x),Math.floor(floorBeforeVacuum.y)+3,650);const vacuumTarget=await best(1);assert.ok(vacuumTarget,'Loose sand must remain available for the researched tool');await page.keyboard.press('7');const inv=await page.evaluate(()=>__prismara.inventory[1]);await hold(vacuumTarget.x,vacuumTarget.y,750);assert.ok(await page.evaluate(()=>__prismara.inventory[1])>inv);await page.keyboard.press('2');assert.equal(await page.evaluate(()=>__prismara.tool),'collect');
+ // Square structural line via ordinary drag, rotation and removal.
+ await page.keyboard.press('b');await page.locator('[data-machine="platform"]').click();await dragArea(160,136,176,136);assert.equal(await page.evaluate(()=>__prismara.factory.machines.filter(m=>m.kind==='platform').length),3);await page.keyboard.press('b');await page.locator('[data-machine="wall"]').click();await page.keyboard.press('r');await hold(184,136,100);
+ const modules=await page.evaluate(()=>__prismara.factory.machines.map(m=>({kind:m.kind,w:m.w,h:m.h,rotation:m.rotation})));assert.ok(modules.every(m=>m.w===8&&m.h===8));assert.equal(modules.find(m=>m.kind==='wall').rotation,1);await screenshot('03-fabrica-etapas');pass('Normal construction uses equal square modules and rotated geometry',modules);
+ await page.keyboard.press('5');await dragArea(133,141,153,169);await page.keyboard.press('c');const beforeCopy=await page.evaluate(()=>({stock:__prismara.inventory[1],count:__prismara.factory.machines.length,copied:__prismara.clipboard.length}));assert.equal(beforeCopy.copied,3);await page.keyboard.press('v');await hold(232,128,100);assert.equal(await page.evaluate(()=>__prismara.factory.machines.length),beforeCopy.count+3);assert.equal(await page.evaluate(()=>__prismara.inventory[1]),beforeCopy.stock-12);await page.keyboard.press('5');await dragArea(230,126,250,154,true);assert.equal(await page.evaluate(()=>__prismara.factory.machines.length),beforeCopy.count);assert.equal(await page.evaluate(()=>__prismara.inventory[1]),beforeCopy.stock);pass('Module drag, group copy and area removal preserve construction stock');
+ for(const [width,height] of [[1280,720],[1920,1080]]){await page.setViewportSize({width,height});await delay(150);pass('HUD without overlaps '+width+'x'+height,await assertHUD());}await page.setViewportSize({width:1280,height:720});
+ // Pick a real portion, suspend the gesture with the menu, and preserve it through closing.
+ await fly(156,128);await fly(207,128);await fly(207,145);await pick(17);const carried=(await state()).load;await page.keyboard.press('Escape');await page.mouse.up();assert.deepEqual((await state()).load,carried);
+ if(!process.env.PRISMARA_BOOTSTRAP_ONLY){await page.keyboard.press('Escape');await traverseGeneratedGallery(page,screenshot,pass);assert.deepEqual((await state()).load,carried);await page.keyboard.press('Escape');}
+ await page.locator('[data-action="save"]').click();await page.waitForFunction(()=>__prismara.saveLabel==='Salvo neste navegador');
+ const snapshot=await page.evaluate(async()=>{const {readSave}=await import('/src/game/save.ts');return JSON.parse(await readSave());});const download=page.waitForEvent('download');await page.locator('[data-action="export"]').click();const exported=await download;await exported.saveAs(artifacts+'/manual.prismara');
+ await page.reload({waitUntil:'networkidle'});await page.locator('[data-action="continue"]').click();await page.waitForFunction(()=>__prismara.started);await page.keyboard.press('Escape');
+ const after=await page.evaluate(()=>({load:__prismara.manualLoad,inventory:__prismara.inventory,research:__prismara.progress.researched,machines:__prismara.factory.machines.length,known:__prismara.exploration.discoveredCells.reduce((a,b)=>a+b,0)}));assert.deepEqual(after.load,carried);assert.deepEqual(after.inventory,snapshot.inventory);assert.deepEqual(after.research,snapshot.progress.researched);assert.equal(after.machines,snapshot.machines.length);
+ await page.locator('#save-import').setInputFiles(artifacts+'/manual.prismara');await page.waitForFunction(()=>document.querySelector('#toast')?.textContent==='Partida importada e validada.');await page.keyboard.press('Escape');assert.deepEqual((await state()).load,carried);pass('Menu, reload, Continue and portable import preserve the exact manual pixels and inventory',after);
+ await page.keyboard.press('Escape');
+}

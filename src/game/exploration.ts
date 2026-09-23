@@ -1,5 +1,5 @@
 import { World } from '../sim/world';
-import { chambers } from '../sim/terrain';
+import { chambers, surfaceAt } from '../sim/terrain';
 
 export const DISCOVERY_RADIUS = 80;
 export const LAMP_DISCOVERY_RADIUS = 38;
@@ -24,6 +24,14 @@ export class Exploration {
     this.discoveredCells = new Uint8Array(this.width * this.height);
     this.rememberedMaterial = new Uint8Array(this.discoveredCells.length);
     this.map={x:this.width/2,y:this.height/2,zoom:1};
+  }
+  /** Reveal only the stored external profile, never flood-fill cavern air. */
+  revealSurface() {
+    for(let x=0;x<this.width;x++)for(let y=0;y<=Math.min(this.height-1,surfaceAt(this.physical,x)+3);y++){
+      const i=y*this.width+x;
+      if(!this.discoveredCells[i]){this.discoveredCells[i]=1;this.rememberedMaterial[i]=this.physical.cells[i];}
+    }
+    this.revision++;
   }
   matches(world: World) { return this.physical === world; }
   knows(x: number, y: number): boolean {

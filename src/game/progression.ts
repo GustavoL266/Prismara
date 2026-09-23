@@ -1,5 +1,6 @@
 export interface Research {id:string;branch:string;name:string;gold:number;crystals:number;requires:string[];unlocks:string;}
 export const RESEARCH:Research[]=[
+  {id:'vacuum',branch:'Ferramentas',name:'Rotor de Coleta',gold:6,crystals:0,requires:[],unlocks:'[7] Aspirador contínuo · Coleta de grãos e água na mochila'},
   {id:'processing',branch:'Processamento',name:'Tambor dos Sedimentos',gold:12,crystals:0,requires:[],unlocks:'Tambor de Argila · Triturador'},
   {id:'transport',branch:'Transporte',name:'Impulso e Triagem',gold:8,crystals:0,requires:[],unlocks:'Lançador · Elevador · Filtro · Esteira Rápida'},
   {id:'liquids',branch:'Gestão de líquidos',name:'Hidráulica de Bolsões',gold:6,crystals:0,requires:[],unlocks:'Bomba · Tubo · Válvula'},
@@ -14,8 +15,8 @@ export const RESEARCH:Research[]=[
 ];
 export interface MissionContext {mined:number;wet:number;gold:number;stored:number;machines:number;research:number;discovered:number;challenges:number;won:boolean}
 export const MISSIONS:{title:string;detail:string;goal:number;value:(c:MissionContext)=>number;hint:string}[]=[
-  {title:'Liberar o depósito',detail:'Escave 24 células',goal:24,value:c=>c.mined,hint:'[1] rompe o terreno. Os grãos ficam no mundo. [2] aspira; [3] despeja. A mochila começa com areia de construção.'},
-  {title:'Umedecer a areia',detail:'Misture 24 grãos com água',goal:24,value:c=>c.wet,hint:'Colete água no bolsão à direita. Construa a peneira no ar e despeje areia e água sobre a grelha. Cada grão consome uma água.'},
+  {title:'Liberar o depósito',detail:'Escave 24 células',goal:24,value:c=>c.mined,hint:'[1] rompe o terreno. Os grãos ficam no mundo. [2] pega uma porção: pressione, mova e solte. [G] guarda a carga como estoque. A mochila começa com areia de construção.'},
+  {title:'Umedecer a areia',detail:'Misture 24 grãos com água',goal:24,value:c=>c.wet,hint:'Leve areia solta com [2] até a água do bolsão à direita. Solte sobre a água; pegue a areia úmida e leve até a grelha. Cada grão consome uma água.'},
   {title:'O primeiro ouro',detail:'Colete 6 moedas',goal:6,value:c=>c.gold,hint:'Peneira no alto, coletor abaixo com espaço livre. Ouro cai; resíduo anda para a lateral. Instale uma esteira na margem para receber o excesso.'},
   {title:'Ramos industriais',detail:'Compre 2 pesquisas',goal:2,value:c=>c.research,hint:'[T] mostra custos e dependências. Hidráulica antecipa bombas para manter a mistura sem cliques repetidos.'},
   {title:'Uma instalação que trabalha',detail:'Construa 8 peças',goal:8,value:c=>c.machines,hint:'Feche um reservatório com paredes. Bomba → tubos → válvula sobre a peneira. Esteiras levam areia à água; o coletor recebe a saída inferior.'},

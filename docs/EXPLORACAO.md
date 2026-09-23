@@ -3,6 +3,7 @@
 Contrato da revisão, registrado antes da implementação:
 
 - Física, conhecimento e iluminação são dados independentes. A fábrica continua funcionando em áreas desconhecidas.
+- Céu e superfície começam conhecidos em toda a largura, até três células sob cada altura armazenada em `generation.surface`. Não há busca por ar conectado nem descoberta automática de câmaras. A carga de uma partida une essa faixa à máscara existente.
 - O personagem revela um disco de raio 80 células, usando o centro de cada célula. Zoom, câmera, resolução e mapa não alteram esse raio.
 - Deslocamentos contínuos unem discos; teleporte revela apenas o destino.
 - Conhecimento é permanente. Material cartográfico guarda a última observação; alterações distantes aparecem ao retornar.
@@ -29,6 +30,6 @@ Canvas do mundo usa uma densidade de pixels inteira, arredondada e limitada a 2�
 
 ## Persistência e limites
 
-Saves v3 comprimem descoberta, memória, variantes e fundo junto ao estado físico no worker. A leitura valida comprimento, valores, bounds, marcadores e memória fora da máscara. Importação/exportação inclui os mesmos dados. V1 e v2 recebem apenas o entorno atual e footprints existentes; a lista de regiões visitadas não revela suas extensões. Novo mundo cria buffers novos.
+Saves v5 preservam os dados v3/v4 e comprimem descoberta, memória, variantes e fundo junto ao estado físico no worker. A leitura valida comprimento, valores, bounds, marcadores e memória fora da máscara. Importação/exportação inclui os mesmos dados. V1 e v2 recebem apenas o entorno atual e footprints existentes; a lista de regiões visitadas não revela suas extensões. Novo mundo cria buffers novos.
 
 A descoberta radial funciona como leitura do subsolo, inclusive depósitos atrás de paredes. A luz reduzida aproxima oclusão; não calcula óptica contínua ou sombras exatas de cada máquina. A memória cartográfica registra materiais, sem histórico de todos os estados de máquinas. Telemetria industrial remota não foi adicionada. A galeria de comparação é um cenário de teste, ausente dos controles normais.

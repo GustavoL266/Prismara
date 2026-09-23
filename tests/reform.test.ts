@@ -1,3 +1,5 @@
+import {legacySize} from '../src/game/migrate-modules';
+import {feedPoint,globalCell} from '../src/sim/machines';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {World} from '../src/sim/world';
@@ -19,22 +21,22 @@ const advance=(w:World,f:Factory,n:number)=>{for(let i=0;i<n;i++){f.step();w.ste
 test('sieve reserves its lower outlet and leaves residual material on the grille',()=>{
   const w=new World(120,100,72),f=new Factory(w),m=f.add('sieve',40,30)!;
   const x=46;
-  w.set(x,m.y-1,Mat.WetSand);w.set(x,m.y+m.h,Mat.Rock);f.step();
-  assert.equal(w.get(x,m.y-1),Mat.WetSand);assert.equal(m.status,'Saída bloqueada');
+  w.set(x,m.y+4,Mat.WetSand);w.set(x,m.y+m.h,Mat.Rock);f.step();
+  assert.equal(w.get(x,m.y+4),Mat.WetSand);assert.equal(m.status,'Saída bloqueada');
   w.set(x,m.y+m.h,Mat.Air);
   const original=w.rng.bind(w);w.rng=()=>0;w.tick=5;f.step();w.rng=original;
-  assert.equal(w.get(x,m.y-1),Mat.Residue);assert.equal(w.get(x,m.y+m.h),Mat.Gold);
+  assert.equal(w.get(x,m.y+4),Mat.Residue);assert.equal(w.get(x,m.y+m.h),Mat.Gold);
   assert.equal(f.energy.value,160);assert.equal(f.counters.wet,1);
-  assert.equal(machinePorts(m).find(p=>p.label==='Resíduo')!.y,m.y-1);
+  assert.equal(machinePorts(m).find(p=>p.label==='Resíduo')!.y,m.y+4);
 });
 test('sieve yield matches its configurable abstraction over many independent grains',()=>{
   const w=new World(100,100,51),f=new Factory(w),m=f.add('sieve',40,30)!;
-  for(let n=0;n<2000;n++){w.tick=n*5;w.set(46,29,Mat.WetSand);f.step();w.set(46,35,Mat.Air);for(let x=40;x<65;x++)w.set(x,29,Mat.Air);}
+  for(let n=0;n<2000;n++){w.tick=n*5;w.set(46,34,Mat.WetSand);f.step();w.set(46,38,Mat.Air);for(let x=40;x<48;x++)w.set(x,34,Mat.Air);}
   assert.equal(f.counters.wet,2000);assert.ok(Math.abs(f.counters.gold/2000-REACTIONS.sieve.goldChance)<.035);
 });
 test('collector credits physical gold and crystals exactly once even after reload and removal',()=>{
   const w=new World(128,96,11),f=new Factory(w),m=f.add('collector',40,40)!;
-  w.set(46,39,Mat.Gold);w.set(47,43,Mat.Crystal);f.step();f.step();
+  w.set(46,39,Mat.Gold);w.set(45,43,Mat.Crystal);f.step();f.step();
   assert.equal(f.gold,1);assert.equal(f.countCrystals(),1);assert.equal(w.count(Mat.Gold),0);
   const game:Saveable={world:w,factory:f,player:Object.assign(new Player(),{x:20,y:30}),inventory:Array(22).fill(0),progress:{mined:0,mixed:0,crystalsMade:0,tier:1,ruins:false,won:false,elapsed:0,mission:0},preferences:{volume:0,shake:false,zoom:3}};
   const r=deserialize(serialize(game));r.factory.step();r.factory.remove(m.id);r.factory.step();
@@ -43,10 +45,10 @@ test('collector credits physical gold and crystals exactly once even after reloa
 });
 test('rotated structural dimensions, solid cells and placement use identical geometry',()=>{
   const w=new World(128,96,17),f=new Factory(w);
-  assert.deepEqual(machineSize('wall',1),{w:16,h:2});
-  w.set(55,31,Mat.Water);
-  assert.equal(f.canPlace('wall',40,30,0),true);assert.equal(f.canPlace('wall',40,30,1),false);
-  w.set(55,31,Mat.Air);const m=f.add('wall',40,30,1)!;
+  assert.deepEqual(machineSize('wall',1),{w:8,h:8});
+  w.set(45,31,Mat.Water);
+  assert.equal(f.canPlace('wall',40,30,0),false);assert.equal(f.canPlace('wall',40,30,1),false);
+  w.set(45,31,Mat.Air);const m=f.add('wall',40,30,1)!;
   assert.deepEqual({w:m.w,h:m.h},machineSize('wall',1));
   for(let y=m.y;y<m.y+m.h;y++)for(let x=m.x;x<m.x+m.w;x++)assert.equal(!!w.blocked[w.index(x,y)],machineSolid(m,x,y));
   assert.equal(f.add('belt',40,30,2),null);
@@ -61,15 +63,15 @@ test('rotated funnel ports follow its physical mouth and throat and mist uses it
     const ports=machinePorts(funnel),entry=ports.find(p=>p.label==='Entrada')!,exit=ports.find(p=>p.label==='Saída')!;
     assert.ok(entry.x<funnel.x||entry.x>=funnel.x+funnel.w||entry.y<funnel.y||entry.y>=funnel.y+funnel.h);
     assert.ok(exit.x<funnel.x||exit.x>=funnel.x+funnel.w||exit.y<funnel.y||exit.y>=funnel.y+funnel.h);
-    const mist=f.add('mist',65,65,rotation)!,nozzle=machinePorts(mist).find(p=>p.label==='Saída')!;w.set(68,64,Mat.Water);f.step();assert.equal(w.get(nozzle.x,nozzle.y),Mat.Mist);
+    const mist=f.add('mist',65,65,rotation)!,nozzle=machinePorts(mist).find(p=>p.label==='Saída')!;const input=feedPoint(mist);w.set(input.x,input.y,Mat.Water);f.step();assert.equal(w.get(nozzle.x,nozzle.y),Mat.Mist);
   }
 });
 test('grille blocks player and residual solids while passing gold, water and gas',()=>{
   const w=new World(100,100,8),f=new Factory(w),s=f.add('sieve',30,30)!;
-  assert.ok(w.blocked[w.index(40,30)]);assert.equal(w.accepts(40,30,Mat.Residue),false);
-  for(const mat of [Mat.Gold,Mat.Water,Mat.Steam])assert.equal(w.accepts(40,30,mat),true);
-  w.set(40,29,Mat.Gold);w.set(45,29,Mat.Residue);s.enabled=false;advance(w,f,8);
-  assert.equal(w.count(Mat.Gold),1);assert.equal(w.get(40,37),Mat.Gold);assert.equal(w.get(45,29),Mat.Residue);
+  assert.ok(w.blocked[w.index(34,35)]);assert.equal(w.accepts(34,35,Mat.Residue),false);
+  for(const mat of [Mat.Gold,Mat.Water,Mat.Steam])assert.equal(w.accepts(34,35,mat),true);
+  w.set(34,34,Mat.Gold);w.set(35,34,Mat.Residue);s.enabled=false;advance(w,f,8);
+  assert.equal(w.count(Mat.Gold),1);assert.equal(w.get(34,42),Mat.Gold);assert.equal(w.get(35,34),Mat.Residue);
 });
 test('launcher traverses intermediate cells and hits a wall without teleporting or deleting grains',()=>{
   const w=new World(120,100,91),f=new Factory(w),m=f.add('launcher',30,40)!;m.force=8;m.angle=0;
@@ -84,18 +86,21 @@ test('consolidated terrain remains in place and excavation releases material wit
 });
 test('finite liquid is contained by built walls and leaks when a wall is removed',()=>{
   const w=new World(100,100,19),f=new Factory(w);
-  const left=f.add('wall',30,34)!,right=f.add('wall',46,34)!;f.add('platform',30,50);f.add('block',46,50);
-  for(let y=38;y<48;y++)for(let x=32;x<46;x++)w.set(x,y,Mat.Water);
-  advance(w,f,120);assert.equal(w.count(Mat.Water),140);
-  assert.equal(w.cells.some((m,i)=>m===Mat.Water&&i%w.width>48),false);
-  f.remove(right.id);advance(w,f,80);assert.equal(w.count(Mat.Water),140);assert.ok(w.cells.some((m,i)=>m===Mat.Water&&i%w.width>48));assert.ok(left);
+  const left=f.add('wall',32,32)!,right=f.add('wall',48,32)!;f.add('platform',32,40);f.add('platform',40,40);f.add('block',48,40);
+  for(let y=36;y<46;y++)for(let x=33;x<48;x++)w.set(x,y,Mat.Water);
+  // Stack a second wall module to reach the bottom platform.
+  const lowerLeft=f.add('wall',32,40);assert.equal(lowerLeft,null,'bounding boxes cannot overlap');
+  for(let y=40;y<47;y++)w.set(32,y,Mat.Wall);for(let y=40;y<47;y++)w.set(48,y,Mat.Wall);
+  advance(w,f,120);assert.equal(w.count(Mat.Water),150);assert.equal(w.cells.some((m,i)=>m===Mat.Water&&i%w.width>48),false);
+  f.remove(right.id);advance(w,f,80);assert.equal(w.count(Mat.Water),150);assert.ok(w.cells.some((m,i)=>m===Mat.Water&&i%w.width>48));assert.ok(left);
+
 });
 test('calcination is visible thermal chemistry and recovered outputs wait for capacity',()=>{
   const w=new World(100,100,14),f=new Factory(w),m=f.add('crusher',40,50)!;
   w.set(45,49,Mat.Residue,520);w.step();assert.equal(w.count(Mat.Calcined),1);
-  const index=w.cells.indexOf(Mat.Calcined);w.set(index%w.width,Math.floor(index/w.width),Mat.Air);w.set(45,49,Mat.Calcined,300);w.set(46,60,Mat.Rock);
+  const index=w.cells.indexOf(Mat.Calcined);w.set(index%w.width,Math.floor(index/w.width),Mat.Air);w.set(45,49,Mat.Calcined,300);w.set(44,58,Mat.Rock);
   const energy=f.energy.value;f.step();assert.equal(w.get(45,49),Mat.Calcined);assert.equal(f.energy.value,energy);
-  w.set(46,60,Mat.Air);w.tick=4;f.step();assert.ok([Mat.Clay,Mat.Quartz].includes(w.get(46,60)));
+  w.set(44,58,Mat.Air);w.tick=4;f.step();assert.ok([Mat.Clay,Mat.Quartz].includes(w.get(44,58)));
 });
 test('research graph is acyclic, every unlock exists, and basic resources never depend on their producer',()=>{
   const visiting=new Set<string>(),done=new Set<string>();
@@ -113,7 +118,7 @@ test('cold ice barriers survive idle simulation and melt when intentionally heat
 test('v1 migration retains old material ids, particles and networks and unlocks compatible branches',()=>{
   const w=new World(128,96,7),f=new Factory(w);f.add('separator',20,20);const p=f.add('pipe',50,20)!;p.buffer={material:Mat.Pulp,count:12,temperature:31};w.set(55,35,Mat.Pulp);w.set(60,40,Mat.Rock);
   const game:Saveable={world:w,factory:f,player:Object.assign(new Player(),{x:70,y:20}),inventory:Array(22).fill(0),progress:{mined:8,mixed:18,crystalsMade:0,tier:3,ruins:false,won:false,elapsed:60,mission:4},preferences:{volume:.1,shake:false,zoom:3}};
-  const data=JSON.parse(serialize(game));data.version=1;data.inventory.length=17;delete data.world.consolidated;delete data.world.velocityX;delete data.world.velocityY;delete data.credits;
+  const data=JSON.parse(serialize(game));data.version=1;data.inventory.length=17;for(const m of data.machines)Object.assign(m,legacySize(m.kind,m.rotation));delete data.world.consolidated;delete data.world.velocityX;delete data.world.velocityY;delete data.credits;
   const r=deserialize(JSON.stringify(data));assert.deepEqual(r.world.cells,w.cells);assert.equal(r.factory.machines[1].buffer!.count,12);assert.equal(r.world.consolidated[r.world.index(60,40)],1);assert.ok(r.progress.researched!.includes('glass'));assert.equal(r.factory.gold,0);
 });
 test('three minutes of autonomous mining, belt transport, finite wetting, screening and collection',()=>{
@@ -135,13 +140,13 @@ test('advanced gravity installation takes only raw sand and water through cerami
 });
 test('closing a gate with particles inside refuses the action and keeps all resources',()=>{
   const w=new World(80,80,3),f=new Factory(w),g=f.add('gate',30,30)!;assert.equal(f.setEnabled(g.id,false),true);
-  w.set(34,30,Mat.Water);assert.equal(f.setEnabled(g.id,true),false);assert.equal(g.enabled,false);assert.equal(w.count(Mat.Water),1);assert.equal(w.blocked[w.index(34,30)],0);
+  w.set(34,37,Mat.Water);assert.equal(f.setEnabled(g.id,true),false);assert.equal(g.enabled,false);assert.equal(w.count(Mat.Water),1);assert.equal(w.blocked[w.index(34,37)],0);
 });
 test('automatic rising signals leave an occupied gate open until its aperture clears',()=>{
   const w=new World(100,100,3),f=new Factory(w),gate=f.add('gate',40,40)!,sensor=f.add('sensor',20,20)!;
   sensor.targetId=gate.id;sensor.filter=Mat.Sand;f.step();assert.equal(gate.signal,false);
-  w.set(44,40,Mat.Gold);w.set(22,16,Mat.Sand);f.step();assert.equal(gate.signal,false);assert.equal(w.blocked[w.index(44,40)],0);assert.equal(w.count(Mat.Gold),1);
-  w.set(44,40,Mat.Air);f.step();assert.equal(gate.signal,true);assert.ok(w.blocked[w.index(44,40)]);
+  w.set(44,47,Mat.Gold);w.set(22,16,Mat.Sand);f.step();assert.equal(gate.signal,false);assert.equal(w.blocked[w.index(44,47)],0);assert.equal(w.count(Mat.Gold),1);
+  w.set(44,47,Mat.Air);f.step();assert.equal(gate.signal,true);assert.ok(w.blocked[w.index(44,47)]);
 });
 test('the ancient mechanism accepts twelve supported pellets without requiring shard cleanup',()=>{
   const world=new World(1024,1536,7),factory=new Factory(world),c=chambers(world).find(c=>c.id==='feed')!;

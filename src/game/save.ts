@@ -1,3 +1,6 @@
+import { MODULE_SIZE } from '../sim/module-geometry';
+import { legacySize,migrateModules,type PendingModule } from './migrate-modules';
+import {emptyLoad,manualEligible,type ManualLoad} from './manipulator';
 import { World } from '../sim/world';
 import { Factory, MACHINE_DEFS, machineSize, normalizeRotation, type Machine, type MachineKind } from '../sim/machines';
 import { Mat, materials } from '../sim/materials';
@@ -9,10 +12,10 @@ import { regionAt, surfaceLevel, chambers, legacyTerrainData } from '../sim/terr
 import { restoreTerrainData } from '../sim/terrain-persistence';
 
 export const SAVE_KEY = 'prismara.world.v1';
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 export interface Progress { mined: number; mixed: number; crystalsMade: number; tier: number; ruins: boolean; won: boolean; elapsed: number; mission: number; researched?:string[]; discovered?:number[]; solved?:string[]; chamberFeed?:number; visited?:string[] }
 export interface Preferences { volume: number; shake: boolean; zoom: number; uiScale?:number }
-export interface Saveable { world: World; factory: Factory; player: Player; inventory: number[]; progress: Progress; preferences: Preferences; exploration?:Exploration }
+export interface Saveable { world: World; factory: Factory; player: Player; inventory: number[]; progress: Progress; preferences: Preferences; exploration?:Exploration;manualLoad?:ManualLoad }
 
 function rle(data: ArrayLike<number>): number[] {
   const out: number[] = [];
@@ -57,6 +60,7 @@ export function serialize(game: Saveable): string {
       cells: rle(w.cells), temperature: rle(w.temperature), fall: rle(w.fall), active: rle(w.active), reactionCounts: w.reactionCounts,
       consolidated:rle(w.consolidated),velocityX:rle(w.velocityX),velocityY:rle(w.velocityY),visualVariant:rle(w.visualVariant),backdrop:rle(w.backdrop),generation:w.generation??legacyTerrainData(w) },
     exploration:{width:w.width,height:w.height,discoveredCells:rle(knowledge.discoveredCells),rememberedMaterial:rle(knowledge.rememberedMaterial),points:knowledge.points,map:knowledge.map},
+    moduleSize:MODULE_SIZE,manualLoad:game.manualLoad??emptyLoad(),pendingModules:game.factory.pendingModules,
     machines: game.factory.machines, nextId: game.factory.nextId,
     energy: { value: game.factory.energy.value, capacity: game.factory.energy.capacity },
     counters: game.factory.counters,
@@ -69,8 +73,9 @@ export function serialize(game: Saveable): string {
 
 export function deserialize(raw: string): Saveable {
   const data: unknown = JSON.parse(raw);
-  if (!record(data) || ![1,2,3,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
-  const legacy=data.version===1;
+  if (!record(data) || ![1,2,3,4,SAVE_VERSION].includes(data.version)) throw new Error('Este salvamento pertence a outra versão de Prismara.');
+  const legacy=data.version===1,oldModules=data.version<5;
+  if(!oldModules&&data.moduleSize!==MODULE_SIZE)throw new Error('Tamanho do módulo inválido');
   const w = data.world;
   if (!record(w) || !integer(w.width, 32, 1024) || !integer(w.height, 32, 2048)) throw new Error('Dimensão inválida');
   if (!integer(w.seed, 0, 0xffffffff) || !integer(w.tick, 0, 0xffffffff) || !integer(w.rngState, 0, 0xffffffff)) throw new Error('Semente inválida');
@@ -101,22 +106,28 @@ export function deserialize(raw: string): Saveable {
   }
 
   const factory = new Factory(world);
-  if (!Array.isArray(data.machines) || data.machines.length > 1000) throw new Error('Máquinas inválidas');
+  if (!Array.isArray(data.machines) || data.machines.length > 5000) throw new Error('Máquinas inválidas');
   const ids = new Set<number>();
   const machines: Machine[] = [];
-  for (const m of data.machines) {
+  const pendingInput=oldModules?[]:data.pendingModules;
+  if(!Array.isArray(pendingInput)||pendingInput.length>4000)throw new Error('Módulos pendentes inválidos');
+  const pendingModules:PendingModule[]=[];
+  for (const [position,m] of [...data.machines,...pendingInput.map((p:any)=>p?.machine)].entries()) {
+    const pending=position>=data.machines.length?pendingInput[position-data.machines.length]:undefined;
+    if(pending&&(!record(pending.source)||!integer(pending.source.id,1,0x7ffffffe)||!integer(pending.source.x,0,world.width)||!integer(pending.source.y,0,world.height)||!integer(pending.source.w,1,32)||!integer(pending.source.h,1,32)||typeof pending.reason!=='string'||pending.reason.length>300))throw new Error('Origem de módulo inválida');
     if (!record(m) || typeof m.kind !== 'string' || !Object.hasOwn(MACHINE_DEFS, m.kind)) throw new Error('Estrutura de máquina inválida');
-    const kind = m.kind as MachineKind, def = machineSize(kind,legacy?normalizeRotation(kind,m.rotation):m.rotation);
+    const kind = m.kind as MachineKind, def = oldModules?legacySize(kind,m.rotation):machineSize(kind,m.rotation);
     if (!integer(m.id, 1, 0x7ffffffe) || ids.has(m.id) || !integer(m.x, 0, world.width - def.w) ||
       !integer(m.y, 0, world.height - def.h) || m.w !== def.w || m.h !== def.h ||
-      !integer(m.rotation, 0, 3) || typeof m.enabled !== 'boolean' || typeof m.signal !== 'boolean' ||
+      !integer(m.rotation, 0, 3) || (!oldModules&&normalizeRotation(kind,m.rotation)!==m.rotation) || typeof m.enabled !== 'boolean' || typeof m.signal !== 'boolean' ||
       typeof m.status !== 'string' || m.status.length > 200 || !integer(m.filter, 0, materials.length - 1) ||
       !finite(m.densityMin, 0, 65535) || !finite(m.densityMax, m.densityMin, 65535) ||
       !['material', 'density'].includes(m.mode) || !finite(m.flash, 0, 1000) ||
       (m.targetId !== undefined && !integer(m.targetId, 1, 0x7ffffffe))) throw new Error('Configuração de máquina inválida');
     const machine: Machine = { id: m.id, kind, x: m.x, y: m.y, w: def.w, h: def.h,
-      rotation: legacy?normalizeRotation(kind,m.rotation):m.rotation, enabled: m.enabled, signal: m.signal, status: m.status, filter: m.filter,
+      rotation: m.rotation, enabled: m.enabled, signal: m.signal, status: m.status, filter: m.filter,
       densityMin: m.densityMin, densityMax: m.densityMax, mode: m.mode, flash: m.flash };
+    if(m.stockCost!==undefined){if(!integer(m.stockCost,0,MACHINE_DEFS[kind].cost))throw new Error('Estoque de módulo inválido');machine.stockCost=m.stockCost;}
     if (m.targetId !== undefined) machine.targetId = m.targetId;
     if(m.force!==undefined){if(!finite(m.force,1,8))throw new Error('Força inválida');machine.force=m.force;}
     if(m.angle!==undefined){if(!finite(m.angle,0,80))throw new Error('Ângulo inválido');machine.angle=m.angle;}
@@ -129,15 +140,16 @@ export function deserialize(raw: string): Saveable {
       machine.buffer = { material: b.material, count: b.count, temperature: b.temperature };
     }
     const secondLayer = ['pipe', 'pump', 'valve', 'sensor'].includes(kind);
-    if (machines.some(other => secondLayer === ['pipe', 'pump', 'valve', 'sensor'].includes(other.kind) &&
+    if (!pending && machines.some(other => secondLayer === ['pipe', 'pump', 'valve', 'sensor'].includes(other.kind) &&
       machine.x < other.x + other.w && machine.x + machine.w > other.x &&
       machine.y < other.y + other.h && machine.y + machine.h > other.y)) throw new Error('Máquinas sobrepostas');
-    ids.add(machine.id); machines.push(machine);
+    ids.add(machine.id);if(pending)pendingModules.push({machine,source:{...pending.source},reason:pending.reason});else machines.push(machine);
   }
-  factory.machines = machines;
+  factory.pendingModules=pendingModules;
   const minimumId = Math.max(0, ...ids) + 1;
   if (data.nextId !== undefined && !integer(data.nextId, minimumId, 0x7fffffff)) throw new Error('Identificador de máquina inválido');
   factory.nextId = data.nextId ?? minimumId;
+  if(!oldModules)factory.machines=machines;
   if (!record(data.energy) || !finite(data.energy.capacity, 1, 100000) || !finite(data.energy.value, 0, data.energy.capacity)) throw new Error('Energia inválida');
   factory.energy.capacity = data.energy.capacity; factory.energy.value = data.energy.value;
   if (!record(data.counters) || Object.keys(data.counters).length > 100 ||
@@ -155,6 +167,7 @@ export function deserialize(raw: string): Saveable {
     (p.grounded !== undefined && typeof p.grounded !== 'boolean') ||
     (p.thrust !== undefined && typeof p.thrust !== 'boolean')) throw new Error('Explorador inválido');
   player.x = p.x; player.y = p.y; player.fuel = p.fuel;
+  if(oldModules)migrateModules(factory,machines,player);
   player.vx = p.vx ?? 0; player.vy = p.vy ?? 0; player.facing = p.facing ?? 1;
   player.grounded = p.grounded ?? false; player.thrust = p.thrust ?? false;
   if(p.propulsion!==undefined){if(!integer(p.propulsion,0,3))throw new Error('Propulsor inválido');player.propulsion=p.propulsion;}
@@ -175,6 +188,8 @@ export function deserialize(raw: string): Saveable {
     if(progress.chamberFeed!==undefined){if(!integer(progress.chamberFeed,0,12))throw new Error('Mecanismo inválido');progressState.chamberFeed=progress.chamberFeed;}
     for(const id of progressState.researched??[])if(!RESEARCH.find(r=>r.id===id)!.requires.every(dep=>progressState.researched!.includes(dep)))throw new Error('Dependência de pesquisa inválida');
   }
+  if(oldModules)progressState.researched=[...new Set([...(progressState.researched??[]),'vacuum'])];
+  const manualLoad=oldModules?emptyLoad():validateManualLoad(data.manualLoad);
   const preferences: Preferences = { volume: 0.18, shake: true, zoom: 3 };
   if (data.preferences !== undefined) {
     const prefs = data.preferences;
@@ -199,7 +214,8 @@ export function deserialize(raw: string): Saveable {
     exploration.map={x:e.map.x,y:e.map.y,zoom:e.map.zoom};
     for(const c of chambers(world))if(exploration.points.includes(c.id)&&!exploration.knows(c.x,c.y-20))throw new Error('Marcador de câmara oculta');
   }else exploration.migrate(player.x,player.y,machines);
-  return { world, factory, player, exploration, inventory: Array.from({length:materials.length},(_,i)=>data.inventory[i]??0), progress: progressState, preferences };
+  exploration.revealSurface();
+  return { world, factory, player, exploration, manualLoad, inventory: Array.from({length:materials.length},(_,i)=>data.inventory[i]??0), progress: progressState, preferences };
 }
 
 const DATABASE='prismara.saves';
@@ -221,7 +237,7 @@ export function serializeAsync(game:Saveable):Promise<string> {
     pending.set(id,{resolve,reject});
     encoder!.postMessage({id,game:{world:{width:w.width,height:w.height,seed:w.seed,tick:w.tick,rngState:w.rngState,cells:w.cells,temperature:w.temperature,fall:w.fall,active:w.active,reactionCounts:w.reactionCounts,consolidated:w.consolidated,velocityX:w.velocityX,velocityY:w.velocityY,visualVariant:w.visualVariant,backdrop:w.backdrop,generation:w.generation??legacyTerrainData(w)},
       exploration:game.exploration?{discoveredCells:game.exploration.discoveredCells,rememberedMaterial:game.exploration.rememberedMaterial,points:game.exploration.points,map:game.exploration.map}:undefined,
-      factory:{machines:game.factory.machines,nextId:game.factory.nextId,energy:game.factory.energy,counters:game.factory.counters,gold:game.factory.gold,crystals:game.factory.crystals},
+      manualLoad:game.manualLoad??emptyLoad(),factory:{pendingModules:game.factory.pendingModules,machines:game.factory.machines,nextId:game.factory.nextId,energy:game.factory.energy,counters:game.factory.counters,gold:game.factory.gold,crystals:game.factory.crystals},
       player:game.player,inventory:game.inventory,progress:game.progress,preferences:game.preferences}});
   });
 }
@@ -237,7 +253,19 @@ export async function readSave():Promise<string|null> {
   const db=await database();
   try{return await new Promise<string|null>((resolve,reject)=>{const r=db.transaction('worlds').objectStore('worlds').get('current');r.onsuccess=()=>resolve(r.result??localStorage.getItem(SAVE_KEY));r.onerror=()=>reject(r.error);});}finally{db.close();}
 }
-export async function writeSave(raw:string):Promise<void> {
+export async function writeSave(raw:string,previous?:string):Promise<void> {
+  if(previous)deserialize(previous);
   const db=await database();
-  try{await new Promise<void>((resolve,reject)=>{const tx=db.transaction('worlds','readwrite');tx.objectStore('worlds').put(raw,'current');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}finally{db.close();}
+  try{await new Promise<void>((resolve,reject)=>{const tx=db.transaction('worlds','readwrite');if(previous)tx.objectStore('worlds').put(previous,'pre-module-v5');tx.objectStore('worlds').put(raw,'current');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}finally{db.close();}
+}
+
+export async function readMigrationBackup():Promise<string|null>{const db=await database();try{return await new Promise((resolve,reject)=>{const r=db.transaction('worlds').objectStore('worlds').get('pre-module-v5');r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error);});}finally{db.close();}}
+export function validateManualLoad(value:unknown):ManualLoad {
+  if(!record(value)||!['empty','loaded','partial'].includes(value.state)||!Array.isArray(value.pixels)||value.pixels.length>25||!integer(value.material,0,materials.length-1))throw new Error('Carga manual inválida');
+  if(value.pixels.length?(value.state==='empty'||!manualEligible(value.material)):(value.state!=='empty'||value.material!==Mat.Air))throw new Error('Estado da carga inválido');
+  const positions=new Set<string>();
+  for(const p of value.pixels){
+    if(!record(p)||!integer(p.dx,0,4)||!integer(p.dy,0,4)||!integer(p.temperature,-32768,32767)||!integer(p.fall,0,65535)||!integer(p.velocityX,-8,8)||!integer(p.velocityY,-8,8)||!integer(p.variant,0,255)||positions.has(p.dx+':'+p.dy))throw new Error('Pixel da carga inválido');positions.add(p.dx+':'+p.dy);
+  }
+  return {state:value.state,material:value.material,pixels:value.pixels.map((p:any)=>({dx:p.dx,dy:p.dy,temperature:p.temperature,fall:p.fall,velocityX:p.velocityX,velocityY:p.velocityY,variant:p.variant}))};
 }

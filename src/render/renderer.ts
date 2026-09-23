@@ -1,6 +1,9 @@
+import {playerOverlaps} from '../game/player';
+import {snapModule} from '../sim/module-geometry';
+import {gripBounds,dropTargets,emptyLoad,type ManualLoad} from '../game/manipulator';
 import { World, CHUNK_SIZE } from '../sim/world';
 import { Mat, materials } from '../sim/materials';
-import { machineSize, machinePorts, secondary, type Machine, type MachineKind, type Factory } from '../sim/machines';
+import { machineSolid, machineSize, machinePorts, secondary, type Machine, type MachineKind, type Factory } from '../sim/machines';
 import { surfaceAt, chambers } from '../sim/terrain';
 import type { Player } from '../game/player';
 import type { Area, Blueprint } from '../game/game';
@@ -12,7 +15,7 @@ import { geologicalNoise, mineralHash } from '../sim/geology';
 import { FogBoundary } from './fog';
 import { SurfaceBackground } from './surface-background';
 
-export interface RenderState {world:World;exploration:Exploration;factory:Factory;player:Player;time:number;pointer:{x:number;y:number};tool:string;building:MachineKind;rotation:number;selectedId:number;paused:boolean;shake:boolean;won:boolean;area?:Area;selection?:Set<number>;blueprint?:Blueprint[];dragging?:boolean}
+export interface RenderState {world:World;exploration:Exploration;factory:Factory;player:Player;time:number;pointer:{x:number;y:number};tool:string;building:MachineKind;rotation:number;selectedId:number;paused:boolean;shake:boolean;won:boolean;area?:Area;selection?:Set<number>;blueprint?:Blueprint[];dragging?:boolean;manualLoad?:ManualLoad;reach?:number}
 export class Renderer {
   canvas:HTMLCanvasElement;ctx:CanvasRenderingContext2D;mini:HTMLCanvasElement;
   camera={x:210,y:132,zoom:3};follow=true;width=1280;height=720;
@@ -74,21 +77,28 @@ export class Renderer {
     }
     c.globalAlpha=1;
     if(s.tool==='build'&&s.exploration.knows(s.pointer.x,s.pointer.y)){
-      const x=Math.floor(s.pointer.x/2)*2,y=Math.floor(s.pointer.y/2)*2;
+      const x=snapModule(s.pointer.x),y=snapModule(s.pointer.y);
       const ghosts=s.blueprint?.length?s.blueprint:[{kind:s.building,dx:0,dy:0,rotation:s.rotation,config:{}}];
       for(const b of ghosts){
-        const size=machineSize(b.kind,b.rotation),m={id:0,kind:b.kind,x:x+b.dx,y:y+b.dy,...size,rotation:b.rotation,enabled:false,signal:false,status:'Prévia',filter:Mat.Quartz,densityMin:180,densityMax:260,mode:'material',flash:0,...b.config} as Machine;
-        const p=s.player,playerBlocked=!secondary(b.kind)&&m.x<p.x+3&&m.x+m.w>p.x-3&&m.y<p.y+1&&m.y+m.h>p.y-9;
+        const size=machineSize(b.kind,b.rotation),m={id:0,kind:b.kind,x:x+b.dx,y:y+b.dy,...size,rotation:b.rotation,enabled:true,signal:true,status:'Prévia',filter:Mat.Quartz,densityMin:180,densityMax:260,mode:'material',flash:0,...b.config} as Machine;
+        const p=s.player,playerBlocked=playerOverlaps(p.x,p.y,(x,y)=>machineSolid(m,x,y));
         if(!s.exploration.footprint(m.x,m.y,m.w,m.h))continue;
         const valid=s.factory.canPlace(b.kind,m.x,m.y,b.rotation)&&!playerBlocked;
         c.globalAlpha=.6;this.machine(c,m,w.tick/30);c.globalAlpha=1;c.strokeStyle=valid?'#d5da95':'#ec7463';c.lineWidth=.7;c.strokeRect(m.x-.5,m.y-.5,m.w+1,m.h+1);this.ports(m);
       }
-    }else if(s.tool!=='none'&&s.exploration.knows(s.pointer.x,s.pointer.y)){
+    }else if(s.tool!=='collect'&&s.tool!=='none'&&s.exploration.knows(s.pointer.x,s.pointer.y)){
       c.strokeStyle=s.tool==='thermal'?'#ef9a43':s.tool==='collect'?'#b5c7d9':'#d6c28e';c.lineWidth=.6;c.strokeRect(s.pointer.x-3.5,s.pointer.y-3.5,8,8);
     }
     for(const m of s.factory.machines)if(s.exploration.knows(m.x,m.y)&&(m.id===s.selectedId||s.selection?.has(m.id))){c.strokeStyle='#e1b866';c.lineWidth=.7;c.strokeRect(m.x-1,m.y-1,m.w+2,m.h+2);if(m.id===s.selectedId)this.ports(m);}
     if(s.area){const a=s.area;c.fillStyle=a.remove?'#e6746328':'#e1b86622';c.strokeStyle=a.remove?'#e67463':'#e1b866';c.fillRect(a.x,a.y,a.endX-a.x,a.endY-a.y);c.strokeRect(a.x,a.y,a.endX-a.x,a.endY-a.y);}
-    this.visibility(s,left,top,right,bottom);c.restore();c.restore();
+    this.visibility(s,left,top,right,bottom);
+    if(s.tool==='collect'){
+      const b=gripBounds(s.pointer.x,s.pointer.y),load=s.manualLoad??emptyLoad(),targets=dropTargets({...s,reach:s.reach??70},load,s.pointer.x,s.pointer.y),valid=targets.filter(t=>t.valid).length;
+      for(const t of targets){c.fillStyle=materials[load.material].color;c.fillRect(t.x,t.y,1,1);if(!t.valid){c.fillStyle='#d95658';c.fillRect(t.x+.7,t.y+.7,.3,.3);}}
+      c.strokeStyle=!targets.length?'#e1b866':valid===targets.length?'#b8d18f':valid?'#e5ad55':'#ee7777';c.lineWidth=1/z;c.strokeRect(b.x,b.y,b.w,b.h);
+    }
+    c.restore();c.restore();
+    if(s.tool==='collect'&&s.manualLoad?.pixels.length){const p=this.screenPoint(s.pointer.x+4,s.pointer.y-4);c.font='13px system-ui';const label=s.manualLoad.pixels.length+' '+materials[s.manualLoad.material].name;c.fillStyle='#17191d';c.fillRect(p.x-4,p.y-15,c.measureText(label).width+8,21);c.fillStyle='#f0dca7';c.fillText(label,p.x,p.y);}
     if(w.tick-this.miniTick>=12||this.miniTick<0){this.minimap(s);this.miniTick=w.tick;}
   }
   private paintVisible(w:World){

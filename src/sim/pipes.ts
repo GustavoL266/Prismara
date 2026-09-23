@@ -1,9 +1,10 @@
+import { globalCell, MODULE_SIZE } from './module-geometry';
 import { Mat } from './materials';
 import type { World } from './world';
 import type { Machine } from './machines';
 
 export interface FluidBuffer { material: Mat; count: number; temperature: number }
-export const PIPE_CAPACITY = 48;
+export const PIPE_CAPACITY = MODULE_SIZE * (MODULE_SIZE - 2);
 export const PIPE_MATERIALS = [Mat.Water, Mat.Pulp] as const;
 export const isPipeMachine = (m: Machine): boolean => ['pump', 'pipe', 'valve'].includes(m.kind);
 export const acceptsFluid = (m: Mat): boolean => (PIPE_MATERIALS as readonly Mat[]).includes(m);
@@ -52,13 +53,10 @@ export class PipeSystem {
       for (const pump of group.filter(m => m.kind === 'pump' && m.enabled && m.signal !== false)) {
         let didPump = false;
         const points: [number, number][] = [];
-        for (let x = pump.x - 1; x <= pump.x + pump.w; x++) {
-          points.push([x, pump.y - 1], [x, pump.y + pump.h]);
-        }
-        for (let y = pump.y; y < pump.y + pump.h; y++) points.push([pump.x - 1, y], [pump.x + pump.w, y]);
+        for(let col=1;col<MODULE_SIZE-1;col++){const p=globalCell(pump,col,-1);points.push([p.x,p.y]);}
         for (const [x, y] of points) {
           const material = this.world.get(x, y);
-          if (!acceptsFluid(material)) continue;
+          if (!acceptsFluid(material)||this.world.consolidated[this.world.index(x,y)]||!this.world.accepts(x,y,material)) continue;
           const dest = group.find(m => m.buffer!.count < PIPE_CAPACITY && (m.buffer!.count === 0 || m.buffer!.material === material));
           if (!dest) { pump.status = 'Rede cheia'; break; }
           const temperature = this.world.temperature[this.world.index(x, y)];
@@ -76,9 +74,7 @@ export class PipeSystem {
         if(this.world.tick%(valve.interval??20))continue;
         const source = group.find(m => m.buffer!.count > 0);
         if (!source) { valve.status = 'Rede vazia'; continue; }
-        const d = valve.rotation % 4;
-        const x = d === 1 ? valve.x + valve.w : d === 3 ? valve.x - 1 : valve.x + Math.floor(valve.w / 2);
-        const y = d === 0 ? valve.y + valve.h : d === 2 ? valve.y - 1 : valve.y + Math.floor(valve.h / 2);
+        const {x,y}=globalCell(valve,MODULE_SIZE/2,MODULE_SIZE);
         if (!this.world.accepts(x,y,source.buffer!.material) || this.world.get(x, y) !== Mat.Air) { valve.status = 'Saída bloqueada'; continue; }
         this.world.set(x, y, source.buffer!.material, source.buffer!.temperature);
         source.buffer!.count--;

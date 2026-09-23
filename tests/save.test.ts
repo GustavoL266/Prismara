@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { World } from '../src/sim/world';
 import { Mat, materials } from '../src/sim/materials';
 import { Factory } from '../src/sim/machines';
+import { legacySize } from '../src/game/migrate-modules';
 import { Player } from '../src/game/player';
 import { deserialize, serialize, SAVE_VERSION, type Saveable } from '../src/game/save';
 
@@ -13,8 +14,8 @@ function sample(): Saveable {
   const filter = factory.add('filter', 78, 45)!;
   filter.mode = 'density'; filter.densityMin = 155; filter.densityMax = 225; filter.rotation = 1;
   const pump = factory.add('pump', 8, 12)!;
-  factory.add('pipe', 14, 12);
-  const valve = factory.add('valve', 18, 12)!;
+  factory.add('pipe', 16, 12);
+  const valve = factory.add('valve', 24, 12)!;
   valve.rotation = 1; valve.enabled = false;
   pump.buffer = { material: Mat.Water, count: 23, temperature: 68.5 };
   const sensor = factory.add('sensor', 67, 15)!;
@@ -92,6 +93,7 @@ test('a restored operating factory continues deterministically for 90 fixed tick
 test('early v1 saves without optional movement and activity fields remain loadable', () => {
   const data = JSON.parse(serialize(sample()));
   data.version=1;data.inventory.length=17;
+  for(const m of data.machines){Object.assign(m,legacySize(m.kind,m.rotation));m.x=10+(m.id%4)*27;m.y=10+Math.floor(m.id/4)*25;}
   delete data.world.active; delete data.world.reactionCounts; delete data.nextId; delete data.preferences;
   for (const key of ['vx', 'vy', 'facing', 'thrust', 'grounded']) delete data.player[key];
   const restored = deserialize(JSON.stringify(data));

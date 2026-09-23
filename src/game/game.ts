@@ -1,19 +1,21 @@
+import {snapModule,MODULE_SIZE,rotateVector} from '../sim/module-geometry';
+import { emptyLoad, pickLoad, dropLoad, storeLoad, type ManualLoad } from './manipulator';
 import { World, SIMULATION_HZ } from '../sim/world';
 import { Mat, materials } from '../sim/materials';
 import { generateTerrain, WORLD_WIDTH, WORLD_HEIGHT, spawnPoint, regionAt, REGION_NAMES, chambers } from '../sim/terrain';
-import { Factory, MACHINE_DEFS, feedPoint, machineSize, secondary, normalizeRotation, type MachineKind, type Machine } from '../sim/machines';
+import { Factory, MACHINE_DEFS, feedPoint, machineSolid, machineSize, secondary, normalizeRotation, type MachineKind, type Machine } from '../sim/machines';
 import { Renderer } from '../render/renderer';
-import { Player } from './player';
+import { Player, playerOverlaps } from './player';
 import { Input, actionFor } from './input';
 import { AudioSystem } from './audio';
-import { deserialize, serialize, serializeAsync, readSave, writeSave, type Progress, type Preferences } from './save';
+import { deserialize, serialize, serializeAsync, readSave, writeSave, readMigrationBackup, type Progress, type Preferences } from './save';
 import { MISSIONS, RESEARCH, type MissionContext } from './progression';
 import { UI } from '../ui/ui';
 import { Exploration, LAMP_DISCOVERY_RADIUS } from './exploration';
 
-export type Tool='dig'|'collect'|'pour'|'build'|'select'|'thermal';
+export type Tool='dig'|'collect'|'pour'|'build'|'select'|'thermal'|'vacuum';
 export type Panel='start'|'build'|'research'|'upgrades'|'help'|'inventory'|'pause'|'new'|'won'|null;
-export const TOOL_NAMES={dig:'Escavar',collect:'Aspirar',pour:'Despejar',build:'Construir',select:'Selecionar',thermal:'Lança térmica'};
+export const TOOL_NAMES={dig:'Escavar',collect:'Manipular',vacuum:'Aspirador',pour:'Despejar',build:'Construir',select:'Selecionar',thermal:'Lança térmica'};
 export const FEED_MATERIAL:Partial<Record<MachineKind,Mat>>={sieve:Mat.WetSand,collector:Mat.Gold,separator:Mat.Residue,kiln:Mat.Clay,heater:Mat.Residue,crucible:Mat.Quartz,mist:Mat.Water,press:Mat.Pellet,vault:Mat.Crystal,crusher:Mat.Calcined,pump:Mat.Water,lift:Mat.Pellet,belt:Mat.Sand,fastbelt:Mat.Sand,launcher:Mat.Sand};
 export interface Area {x:number;y:number;endX:number;endY:number;remove:boolean}
 export interface Blueprint {sourceId?:number;kind:MachineKind;dx:number;dy:number;rotation:number;config:Partial<Machine>}
@@ -25,21 +27,30 @@ export class Game {
   progress:Progress=initialProgress();
   preferences:Preferences={volume:.18,shake:false,zoom:3,uiScale:1};
   renderer:Renderer;input:Input;audio=new AudioSystem();ui:UI;
+  manualLoad:ManualLoad=emptyLoad();
   tool:Tool='dig';material:Mat=Mat.Sand;building:MachineKind='sieve';rotation=0;selectedId=0;panel:Panel='start';
   started=false;hasSave=false;time=0;fps=60;saveLabel='Salvamento local';
   simulationMs=0;renderMs=0;maxSimulationMs=0;saveMs=0;
   area?:Area;selection=new Set<number>();clipboard:Blueprint[]=[];pasteGroup=false;
   private last=0;private accumulator=0;private lastUI=0;private lastAutosave=0;private usedClick=false;private toastUntil=0;
   private feeds:{id:number;material:Mat;remaining:number}[]=[];private mining=new Map<number,number>();
+  pendingModuleId=0;private migrationBackup?:string;
   private lastBuild?:{x:number;y:number};private saving=Promise.resolve();
   constructor(){
     this.ui=new UI(this);this.renderer=new Renderer(document.querySelector('#world')!,document.querySelector('#minimap')!);
     this.renderer.camera.zoom=this.preferences.zoom;
     this.input=new Input(this.renderer.canvas);this.input.onAction=code=>this.key(code);
+    this.input.onPrimary=(pressed,x,y)=>{
+      if(this.paused||!this.started||this.tool!=='collect')return;
+      const p=this.renderer.worldPoint(x,y);
+      if(pressed){if(!this.manualLoad.pixels.length)pickLoad(this,this.manualLoad,p.x,p.y);}
+      else {const n=dropLoad(this,this.manualLoad,p.x,p.y);if(this.manualLoad.pixels.length)this.toast(n?'Parte depositada; o restante continua na ferramenta.':'Destino bloqueado. A carga continua na ferramenta.');}
+      this.ui.update();void this.save(false);
+    };
     this.input.onZoom=amount=>{this.renderer.camera.zoom=Math.max(2,Math.min(6,Math.round((this.renderer.camera.zoom+amount)*1)));this.preferences.zoom=this.renderer.camera.zoom;};
     this.input.onPan=(x,y)=>{this.renderer.follow=false;this.renderer.camera.x-=x/this.renderer.camera.zoom;this.renderer.camera.y-=y/this.renderer.camera.zoom;};
     generateTerrain(this.world);Object.assign(this.player,spawnPoint(this.world));
-    this.exploration.update(this.player.x,this.player.y,[],true);
+    this.exploration.revealSurface();this.exploration.update(this.player.x,this.player.y,[],true);
     readSave().then(raw=>{this.hasSave=!!raw;if(this.panel==='start')this.ui.showPanel();}).catch(()=>this.saveLabel='Armazenamento indisponível');
     this.ui.showPanel();this.ui.update();
     document.addEventListener('visibilitychange',()=>{if(document.hidden&&this.started){void this.save(false);this.input.release();this.last=0;}});
@@ -56,40 +67,47 @@ export class Game {
   newWorld(seed=(Date.now()%1000000)+1){
     this.world=new World(WORLD_WIDTH,WORLD_HEIGHT,seed);generateTerrain(this.world);
     this.factory=new Factory(this.world);this.player=new Player();Object.assign(this.player,spawnPoint(this.world));
-    this.exploration=new Exploration(this.world);this.exploration.update(this.player.x,this.player.y,[],true);
-    this.inventory=Array(materials.length).fill(0);this.inventory[Mat.Sand]=48;
+    this.exploration=new Exploration(this.world);this.exploration.revealSurface();this.exploration.update(this.player.x,this.player.y,[],true);
+    this.pendingModuleId=0;this.migrationBackup=undefined;this.manualLoad=emptyLoad();this.inventory=Array(materials.length).fill(0);this.inventory[Mat.Sand]=48;
     this.progress=initialProgress();this.feeds=[];this.mining.clear();this.lastAutosave=0;this.selectedId=0;this.tool='dig';this.material=Mat.Sand;
     this.selection.clear();this.area=undefined;this.clipboard=[];this.pasteGroup=false;
     this.renderer.camera.x=this.player.x+45;this.renderer.camera.y=this.player.y-35;this.renderer.follow=true;
-    this.started=true;this.setPanel(null);void this.save(false);this.toast('Planície Âmbar descoberta. [1] libera grãos; [2] aspira. Água no bolsão à direita.');
+    this.started=true;this.setPanel(null);void this.save(false);this.toast('Planície Âmbar descoberta. [1] libera grãos; [2] transporta porções. Leve areia ao bolsão de água à direita.');
   }
   async continueWorld(){
     try{const raw=await readSave();if(!raw)throw new Error('Nenhum mundo salvo.');this.restore(raw);this.toast('Expedição restaurada. Fábrica, grãos e pesquisas preservados.');}
     catch(error){this.toast('Não foi possível restaurar: '+(error as Error).message);}
   }
   restore(raw:string){
-    Object.assign(this,deserialize(raw));this.progress.researched??=[];this.progress.discovered??=[0];this.progress.solved??=[];this.progress.visited??=[];this.progress.chamberFeed??=0;
-    this.started=true;this.feeds=[];this.mining.clear();this.selectedId=0;this.selection.clear();this.area=undefined;this.pasteGroup=false;
+    const restored=deserialize(raw);this.migrationBackup=JSON.parse(raw).version<5?raw:undefined;
+    Object.assign(this,restored);this.progress.researched??=[];this.progress.discovered??=[0];this.progress.solved??=[];this.progress.visited??=[];this.progress.chamberFeed??=0;
+    this.started=true;this.tool='dig';this.pendingModuleId=0;this.feeds=[];this.mining.clear();this.selectedId=0;this.selection.clear();this.area=undefined;this.pasteGroup=false;
     this.renderer.camera.x=this.player.x+40;this.renderer.camera.y=this.player.y-30;this.renderer.camera.zoom=this.preferences.zoom;this.renderer.follow=true;this.renderer.invalidate();
     this.audio.volume=this.preferences.volume;this.setPanel(null);
   }
   async save(notify=true):Promise<boolean>{
     if(!this.started)return false;
-    const start=performance.now();this.saveLabel='Salvando…';let raw:string;
+    const start=performance.now(),backup=this.migrationBackup;this.saveLabel='Salvando…';let raw:string;
     try{raw=await serializeAsync(this);}catch{this.saveLabel='Falha ao comprimir — exporte a partida';return false;}
     this.saveMs=performance.now()-start;
     let success=true;
-    this.saving=this.saving.catch(()=>{}).then(()=>writeSave(raw)).then(()=>{this.hasSave=true;this.saveLabel='Salvo neste navegador';if(notify)this.toast('Partida salva.');}).catch(()=>{success=false;this.saveLabel='Falha ao salvar — exporte a partida';if(notify)this.toast('Falha no armazenamento. Exporte a partida pelo menu de pausa.');});
+    this.saving=this.saving.catch(()=>{}).then(()=>writeSave(raw,backup)).then(()=>{this.migrationBackup=undefined;this.hasSave=true;this.saveLabel='Salvo neste navegador';if(notify)this.toast('Partida salva.');}).catch(()=>{success=false;this.saveLabel='Falha ao salvar — exporte a partida';if(notify)this.toast('Falha no armazenamento. Exporte a partida pelo menu de pausa.');});
     await this.saving;return success;
   }
+  async exportMigrationBackup(){const raw=await readMigrationBackup();if(!raw){this.toast('Nenhuma migração local guardada.');return;}this.downloadSave(raw,'Prismara-antes-dos-modulos.prismara');}
+  private downloadSave(raw:string,name:string){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   exportSave(){
     const blob=new Blob([serialize(this)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download='Prismara-'+this.world.seed+'.prismara';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);this.toast('Partida exportada.');
   }
   async importSave(file:File){try{if(file.size>30_000_000)throw new Error('Arquivo grande demais.');const raw=await file.text();deserialize(raw);this.restore(raw);await this.save(false);this.toast('Partida importada e validada.');}catch(e){this.toast('Importação recusada: '+(e as Error).message);}}
   setPanel(panel:Panel){this.panel=panel;this.input?.release();this.area=undefined;this.lastBuild=undefined;this.ui.showPanel();this.ui.update();}
-  selectTool(tool:Tool){if(tool==='thermal'&&!this.hasResearch('thermal')){this.toast('Pesquise Lança Térmica.');return;}this.tool=tool;this.pasteGroup=false;this.selectedId=0;this.ui.update();this.audio.play('click');}
+  toolAvailable(tool:Tool){return tool==='vacuum'?this.hasResearch('vacuum'):tool==='thermal'?this.hasResearch('thermal'):true;}
+  storeManualLoad(){const n=storeLoad(this.manualLoad,this.inventory,this.capacity);this.toast(n?n+' células guardadas na mochila.':'Carga vazia ou mochila cheia.');this.ui.update();void this.save(false);}
+  selectTool(tool:Tool){if(!this.toolAvailable(tool)){this.toast(tool==='vacuum'?'Pesquise Rotor de Coleta para equipar o aspirador.':'Pesquise Lança Térmica.');return;}this.input.release();if(tool==='thermal'&&!this.hasResearch('thermal')){this.toast('Pesquise Lança Térmica.');return;}this.tool=tool;this.pendingModuleId=0;this.pasteGroup=false;this.selectedId=0;this.ui.update();this.audio.play('click');}
+  selectPendingModule(id:number){const p=this.factory.pendingModules.find(p=>p.machine.id===id);if(!p)return;this.pendingModuleId=id;this.building=p.machine.kind;this.rotation=p.machine.rotation;this.tool='build';this.pasteGroup=false;this.selectedId=0;this.setPanel(null);this.toast('Clique numa área livre para reposicionar sem custo.');}
   selectBuild(kind:MachineKind){
+    this.pendingModuleId=0;
     if(!this.unlocked(kind)){this.toast('Pesquise '+RESEARCH.find(r=>r.id===MACHINE_DEFS[kind].research)?.name+'.');return;}
     this.building=kind;this.tool='build';this.rotation=0;this.selectedId=0;this.pasteGroup=false;this.setPanel(null);
   }
@@ -98,12 +116,13 @@ export class Game {
     const action=actionFor(code);
     if(action==='pause'){this.setPanel(this.panel===null?'pause':this.started?null:'start');return;}
     if(this.panel){if(action===this.panel)this.setPanel(null);return;}
-    const tools:Record<string,Tool>={dig:'dig',collect:'collect',pour:'pour',buildTool:'build',select:'select',thermal:'thermal'};
+    const tools:Record<string,Tool>={dig:'dig',collect:'collect',pour:'pour',buildTool:'build',select:'select',thermal:'thermal',vacuum:'vacuum'};
     if(action&&tools[action])this.selectTool(tools[action]);
     if(['build','research','help','inventory','upgrades'].includes(action??''))this.setPanel(action as Panel);
     if(action==='map')this.ui.toggleMap(true);if(action==='minimap')this.ui.toggleMap();
     if(action==='follow'){this.renderer.follow=true;this.toast('Câmera acompanhando o explorador.');}
     if(action==='rotate'){if(this.selectedId)this.rotateSelected();else this.rotation=normalizeRotation(this.building,this.rotation+1);this.ui.update(true);}
+    if(action==='storeLoad')this.storeManualLoad();
     if(action==='copy')this.copySelection();if(action==='paste'){if(this.clipboard.length){this.pasteGroup=true;this.tool='build';this.selectedId=0;this.building=this.clipboard[0].kind;this.toast('Clique para copiar o conjunto; botão direito cancela.');}}
     if(action==='previous'||action==='next'){
       const dir=action==='next'?1:-1;
@@ -112,13 +131,13 @@ export class Game {
     }
     if(action==='delete')for(const id of this.selection.size?[...this.selection]:[this.selectedId])this.removeMachine(id);
   }
-  rotateSelected(){if(this.selectedId&&!this.factory.rotate(this.selectedId))this.toast('Rotação bloqueada: libere a nova geometria.');this.ui.update(true);}
+  rotateSelected(){const m=this.selectedMachine();if(m&&playerOverlaps(this.player.x,this.player.y,(x,y)=>machineSolid({...m,rotation:normalizeRotation(m.kind,m.rotation+1)},x,y))){this.toast('Afaste-se da parte sólida antes de girar.');return;}if(this.selectedId&&!this.factory.rotate(this.selectedId))this.toast('Rotação bloqueada: libere a nova geometria.');this.ui.update(true);}
   private frame(now:number){
     const dt=this.last?Math.min(.1,(now-this.last)/1000):1/60;this.last=now;this.fps+=(1/dt-this.fps)*.03;this.time+=dt;
     if(!this.paused){this.accumulator+=dt;let steps=0;while(this.accumulator>=1/SIMULATION_HZ&&steps<3){this.step();this.accumulator-=1/SIMULATION_HZ;steps++;}}else this.accumulator=0;
     const start=performance.now(),pointer=this.renderer.worldPoint(this.input.mouseX,this.input.mouseY);
-    if(!this.exploration.matches(this.world)){this.exploration=new Exploration(this.world);this.exploration.update(this.player.x,this.player.y,[],true);}
-    this.renderer.render({world:this.world,exploration:this.exploration,factory:this.factory,player:this.player,time:this.time,pointer,tool:this.started&&this.panel===null&&this.input.overWorld?this.tool:'none',building:this.building,rotation:this.rotation,selectedId:this.selectedId,paused:this.paused,shake:this.preferences.shake,won:this.progress.won,area:this.area,selection:this.selection,blueprint:this.pasteGroup?this.clipboard:[],dragging:this.input.left||this.input.right},dt);
+    if(!this.exploration.matches(this.world)){this.exploration=new Exploration(this.world);this.exploration.revealSurface();this.exploration.update(this.player.x,this.player.y,[],true);}
+    this.renderer.render({world:this.world,exploration:this.exploration,factory:this.factory,player:this.player,time:this.time,pointer,tool:this.started&&this.panel===null&&this.input.overWorld?this.tool:'none',building:this.building,rotation:this.rotation,selectedId:this.selectedId,paused:this.paused,shake:this.preferences.shake,won:this.progress.won,area:this.area,selection:this.selection,blueprint:this.pasteGroup?this.clipboard:[],dragging:this.input.left||this.input.right,manualLoad:this.manualLoad,reach:this.reach},dt);
     this.renderMs+=(performance.now()-start-this.renderMs)*.08;
     if(this.time-this.lastUI>.15){this.ui.update();this.lastUI=this.time;}
     if(this.started&&!this.paused&&this.progress.elapsed-this.lastAutosave>25){void this.save(false);this.lastAutosave=this.progress.elapsed;}
@@ -168,6 +187,7 @@ export class Game {
     this.area=undefined;this.ui.update(true);
   }
   private interact(){
+    if(this.tool==='collect')return;
     const {left,right}=this.input,point=this.renderer.worldPoint(this.input.mouseX,this.input.mouseY);
     if(!left&&!right){this.finishArea();this.usedClick=false;this.lastBuild=undefined;return;}
     if(!this.input.overWorld&&!this.area){this.lastBuild=undefined;return;}
@@ -179,13 +199,13 @@ export class Game {
     const m=this.machineAt(point.x,point.y);
     if(right){if(this.pasteGroup){this.pasteGroup=false;this.clipboard=[];}else if(m&&!this.usedClick)this.removeMachine(m.id);this.usedClick=true;return;}
     if(this.tool==='build'){
-      const x=Math.floor(point.x/2)*2,y=Math.floor(point.y/2)*2;
+      const x=snapModule(point.x),y=snapModule(point.y);
       const buildHit=[...this.factory.machines].reverse().find(o=>secondary(o.kind)===secondary(this.building)&&point.x>=o.x&&point.x<o.x+o.w&&point.y>=o.y&&point.y<o.y+o.h);
       if(!this.lastBuild||x!==this.lastBuild.x||y!==this.lastBuild.y){
         if(this.pasteGroup){if(!this.usedClick)this.placeSet(x,y);this.usedClick=true;}
         else if(!buildHit){
-          const previous=this.lastBuild,steps=previous?Math.ceil(Math.max(Math.abs(x-previous.x),Math.abs(y-previous.y))/2):1;
-          for(let n=1;n<=steps;n++){const xx=previous?Math.floor((previous.x+(x-previous.x)*n/steps)/2)*2:x,yy=previous?Math.floor((previous.y+(y-previous.y)*n/steps)/2)*2:y;
+          const previous=this.lastBuild,steps=previous?Math.ceil(Math.max(Math.abs(x-previous.x),Math.abs(y-previous.y))/MODULE_SIZE):1;
+          for(let n=1;n<=steps;n++){const xx=previous?snapModule(previous.x+(x-previous.x)*n/steps):x,yy=previous?snapModule(previous.y+(y-previous.y)*n/steps):y;
             if(this.factory.canPlace(this.building,xx,yy,this.rotation))this.place(this.building,xx,yy,this.rotation,false);
           }
         }else if(!this.usedClick){this.selectedId=buildHit.id;this.ui.update(true);}
@@ -197,7 +217,7 @@ export class Game {
     if(Math.hypot(point.x-this.player.x,point.y-this.player.y)>this.reach){if(!this.usedClick)this.toast('Alcance da ferramenta: '+this.reach+' células. Aproxime-se.');this.usedClick=true;return;}
     if(this.world.tick%2)return;
     if(this.tool==='pour'){
-      const count=Math.min(4,this.inventory[this.material]);if(!count){if(!this.usedClick)this.toast('Material ausente na mochila. [2] aspira; [I] seleciona.');this.usedClick=true;return;}
+      const count=Math.min(4,this.inventory[this.material]);if(!count){if(!this.usedClick)this.toast('Material ausente. [2] pega; [G] guarda; [I] escolhe o estoque.');this.usedClick=true;return;}
       const emitted=this.world.emit(point.x,point.y,this.material,count);this.inventory[this.material]-=emitted;if(emitted)this.audio.play(this.material===Mat.Water?'water':'dig');return;
     }
     let changed=0;
@@ -208,7 +228,8 @@ export class Game {
       if(this.tool==='thermal'){
         if(this.factory.energy.spend(.035)){this.world.temperature[i]=Math.min(1200,this.world.temperature[i]+85);this.world.markDirty(x,y);changed++;}continue;
       }
-      if(this.tool==='collect'){
+      if(this.tool==='vacuum'){
+        if(!this.hasResearch('vacuum'))continue;
         if((this.input.keys.has('ShiftLeft')||this.input.keys.has('ShiftRight'))&&mat!==this.material)continue;
         if(!def.transportable||def.state==='gas'||this.world.consolidated[i]||this.carried>=this.capacity)continue;
         this.inventory[mat]++;this.world.set(x,y,Mat.Air);changed++;continue;
@@ -223,15 +244,17 @@ export class Game {
   place(kind:MachineKind,x:number,y:number,rotation=0,notify=true){
     const d=MACHINE_DEFS[kind],size=machineSize(kind,rotation);
     if(!this.exploration.footprint(x,y,size.w,size.h)){if(notify)this.toast('Explore toda a área antes de construir.');return null;}
-    if(!this.unlocked(kind)){if(notify)this.toast('Pesquisa necessária.');return null;}
-    if(this.inventory[Mat.Sand]<d.cost){if(notify)this.toast('Faltam '+(d.cost-this.inventory[Mat.Sand])+' grãos de areia.');return null;}
+    if(!this.pendingModuleId&&!this.unlocked(kind)){if(notify)this.toast('Pesquisa necessária.');return null;}
+    if(!this.pendingModuleId&&this.inventory[Mat.Sand]<d.cost){if(notify)this.toast('Faltam '+(d.cost-this.inventory[Mat.Sand])+' grãos de areia.');return null;}
     const p=this.player;
-    if(!secondary(kind)&&x<p.x+3&&x+size.w>p.x-3&&y<p.y+1&&y+size.h>p.y-9)return null;
+    const probe={kind,x,y,...size,rotation:normalizeRotation(kind,rotation),enabled:true,signal:true} as Machine;
+    if(playerOverlaps(p.x,p.y,(xx,yy)=>machineSolid(probe,xx,yy)))return null;
+    if(this.pendingModuleId){const m=this.factory.restorePending(this.pendingModuleId,x,y,rotation);if(m){this.pendingModuleId=0;this.selectTool('select');this.toast('Módulo e conteúdo recuperados.');}return m;}
     const m=this.factory.add(kind,x,y,rotation);if(!m){if(notify)this.toast('Posição ocupada.');return null;}
     this.inventory[Mat.Sand]-=d.cost;this.audio.play('build');this.ui.update();return m;
   }
   removeMachine(id:number){const m=this.factory.machines.find(m=>m.id===id);if(!m)return;
-    if(this.factory.remove(id)){this.inventory[Mat.Sand]+=MACHINE_DEFS[m.kind].cost;this.selectedId=0;this.selection.delete(id);this.feeds=this.feeds.filter(f=>f.id!==id);this.audio.play('build');}
+    if(this.factory.remove(id)){this.inventory[Mat.Sand]+=m.stockCost??MACHINE_DEFS[m.kind].cost;this.selectedId=0;this.selection.delete(id);this.feeds=this.feeds.filter(f=>f.id!==id);this.audio.play('build');}
     else this.toast('Libere espaço para drenar o conteúdo dos tubos.');this.ui.update(true);
   }
   copySelection(){
@@ -266,7 +289,7 @@ export class Game {
     for(const feed of this.feeds){
       const m=this.factory.machines.find(m=>m.id===feed.id);if(!m||!this.inventory[feed.material]){feed.remaining=0;continue;}
       const p=feedPoint(m);if(Math.hypot(p.x-this.player.x,p.y-this.player.y)>this.reach){feed.remaining=0;continue;}
-      for(const dx of [0,-1,1,-2,2])if(this.world.get(p.x+dx,p.y)===Mat.Air&&this.world.accepts(p.x+dx,p.y,feed.material)){this.world.set(p.x+dx,p.y,feed.material);this.inventory[feed.material]--;feed.remaining--;break;}
+      for(const offset of [0,-1,1,-2,2]){const d=rotateVector(m.rotation,offset,0),x=p.x+d.x,y=p.y+d.y;if(this.world.get(x,y)===Mat.Air&&this.world.accepts(x,y,feed.material)){this.world.set(x,y,feed.material);this.inventory[feed.material]--;feed.remaining--;break;}}
     }
     this.feeds=this.feeds.filter(f=>f.remaining>0);
   }

@@ -3,10 +3,12 @@ export const CONTROLS=[
   {action:'move',codes:['KeyA','KeyD','ArrowLeft','ArrowRight'],keys:'A / D / ← →',label:'Andar'},
   {action:'fly',codes:['Space','KeyW','ArrowUp'],keys:'Espaço / W / ↑',label:'Propulsor'},
   {action:'dig',codes:['Digit1'],keys:'1',label:'Escavar e liberar grãos'},
-  {action:'collect',codes:['Digit2'],keys:'2',label:'Aspirar partículas'},
+  {action:'collect',codes:['Digit2'],keys:'2',label:'Manipulador manual: pressionar, mover e soltar'},
   {action:'pour',codes:['Digit3'],keys:'3',label:'Despejar material'},
   {action:'buildTool',codes:['Digit4'],keys:'4',label:'Construir por arraste'},
   {action:'select',codes:['Digit5'],keys:'5',label:'Selecionar conjunto em área'},
+  {action:'vacuum',codes:['Digit7'],keys:'7',label:'Aspirador contínuo (pesquisa)'},
+  {action:'storeLoad',codes:['KeyG'],keys:'G',label:'Guardar carga manual na mochila'},
   {action:'thermal',codes:['Digit6'],keys:'6',label:'Lança térmica (pesquisa)'},
   {action:'build',codes:['KeyB'],keys:'B',label:'Catálogo de construção'},
   {action:'research',codes:['KeyT'],keys:'T',label:'Pesquisa'},
@@ -15,7 +17,7 @@ export const CONTROLS=[
   {action:'help',codes:['KeyH'],keys:'H',label:'Ajuda'},
   {action:'map',codes:['KeyM'],keys:'M',label:'Mapa geral (arraste e roda no painel)'},
   {action:'minimap',codes:['KeyN'],keys:'N',label:'Recolher minimapa'},
-  {action:'rotate',codes:['KeyR'],keys:'R',label:'Girar ou inverter peça'},
+  {action:'rotate',codes:['KeyR'],keys:'R',label:'Girar o módulo e suas portas'},
   {action:'previous',codes:['KeyQ'],keys:'Q',label:'Material ou peça anterior'},
   {action:'next',codes:['KeyE'],keys:'E',label:'Próximo material ou peça'},
   {action:'copy',codes:['KeyC'],keys:'C',label:'Copiar conjunto e configurações'},
@@ -34,6 +36,7 @@ export const actionFor=(code:string)=>CONTROLS.find(c=>c.codes.includes(code))?.
 export const keysFor=(action:string)=>CONTROLS.find(c=>c.action===action)?.keys??'';
 export class Input {
   keys = new Set<string>(); mouseX = 0; mouseY = 0; left = false; right = false; pan = false; overWorld = false;
+  onPrimary:(pressed:boolean,x:number,y:number)=>void=()=>{};
   onAction: (code: string) => void = () => {}; onZoom: (amount: number) => void = () => {}; onPan: (dx:number,dy:number) => void = () => {};
   constructor(canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', event => {
@@ -54,9 +57,11 @@ export class Input {
       this.mouseX=e.clientX; this.mouseY=e.clientY;
       if(e.button===0)this.left=true; if(e.button===2)this.right=true; if(e.button===1)this.pan=true;
       canvas.setPointerCapture(e.pointerId);
+      if(e.button===0)this.onPrimary(true,e.clientX,e.clientY);
     });
     canvas.addEventListener('pointerleave', () => { this.overWorld = false; });
-    window.addEventListener('pointerup', () => {this.left=false;this.right=false;this.pan=false;});
+    window.addEventListener('pointerup', e => {if(e.button===0&&this.left&&document.elementFromPoint(e.clientX,e.clientY)===canvas)this.onPrimary(false,e.clientX,e.clientY);this.left=false;this.right=false;this.pan=false;});
+    canvas.addEventListener('pointercancel',()=>this.release());
     canvas.addEventListener('contextmenu',e=>e.preventDefault());
     canvas.addEventListener('wheel',e=>{ e.preventDefault();this.onZoom(-Math.sign(e.deltaY)); },{passive:false});
   }
