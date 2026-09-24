@@ -131,8 +131,8 @@ test('three minutes of autonomous mining, belt transport, finite wetting, screen
   assert.equal(w.count(Mat.Water)+f.pipes.inspect(f.machines.find(m=>m.kind==='pump')!.id).count+w.reactionCounts.wet,initialWater,'every finite water unit remains in the world, tubes or a wetting reaction');
   assert.equal(w.count(Mat.Gold)+f.gold,f.counters.gold,'all emitted gold remains physical or collected');
 });
-test('advanced gravity installation takes only raw sand and water through ceramics, impact energy, glass and rare collection',()=>{
-  const w=new World(320,240,91207),f=new Factory(w);installAdvancedLine(w,f);advance(w,f,5400);
+for(const [width,height] of [[320,240],[1024,1536]])test(`advanced gravity installation takes only raw sand and water through ceramics, impact energy, glass and rare collection (${width}x${height})`,()=>{
+  const w=new World(width,height,91207),f=new Factory(w);installAdvancedLine(w,f);advance(w,f,5400);
   assert.ok(f.counters.clay>180);assert.ok(f.counters.pellet>170);assert.ok(f.counters.impacts>30);assert.ok(f.counters.energy>=960);
   assert.ok(f.counters.molten>40);assert.ok(f.crystals>=8);assert.ok(f.gold>40);
   assert.equal(w.count(Mat.Gold)+f.gold,f.counters.gold);assert.equal(w.count(Mat.Crystal)+f.crystals,w.reactionCounts.crystal);
